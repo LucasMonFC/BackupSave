@@ -189,11 +189,17 @@ namespace BackupSave
             string externalBackupRootPath = GetExternalBackupRootPath();
             
             if (!Directory.Exists(externalBackupRootPath))
+            {
+                ModUI.ShowMessage("A importação já foi realizada.\nFeche e abra o jogo para atualizar a lista de backups.", "IMPORTAÇÃO JÁ REALIZADA");
                 return 0;
+            }
             
             string[] backups = GetExternalBackupList();
             if (backups.Length == 0)
+            {
+                ModUI.ShowMessage("A importação já foi realizada.\nFeche e abra o jogo para atualizar a lista de backups.", "IMPORTAÇÃO JÁ REALIZADA");
                 return 0;
+            }
             
             int importedCount = 0;
             foreach (string backupName in backups)
