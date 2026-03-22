@@ -98,7 +98,7 @@ namespace BackupSave
                 if (!backupCreated && mwcHasValidSave)
                     message += "\n\nAVISO: Falha ao criar backup do save anterior.";
                 else if (!mwcHasValidSave)
-                    message += "\n\nAviso: Não havia save anterior para backup.";
+                    message += "\nAviso: Não havia save anterior para backup.";
                     
                 ModUI.ShowMessage(backupCreated ? "Backup criado com sucesso!\n" + message : message, backupCreated ? "SUCESSO" : "SUCESSO COM AVISO");
             }
@@ -183,64 +183,45 @@ namespace BackupSave
         /// </summary>
         public int ImportAllExternalBackups(int backupLimit)
         {
-            try
-            {
-                if (backupManager == null)
-                    return 0;
-
-                string externalBackupRootPath = GetExternalBackupRootPath();
-                
-                if (!Directory.Exists(externalBackupRootPath))
-                    return 0;
-                
-                string[] backups = GetExternalBackupList();
-                if (backups.Length == 0)
-                    return 0;
-                
-                int importedCount = 0;
-                foreach (string backupName in backups)
-                {
-                    try
-                    {
-                        string externalBackupPath = Path.Combine(externalBackupRootPath, backupName);
-                        string importedName = "IMPORTADO - " + backupName;
-                        
-                        // Usar BackupManager para criar o backup importado
-                        backupManager.ImportExternalBackupPath(externalBackupPath, importedName, backupLimit);
-                        importedCount++;
-                        
-                        ModConsole.Log("<color=#00ff00>[BackupSave] Backup externo importado: " + importedName + "</color>");
-                    }
-                    catch (Exception ex)
-                    {
-                        ModConsole.Error("[BackupSave] Erro ao importar backup: " + backupName + "\n" + ex.Message);
-                    }
-                }
-                
-                // Aplicar limite de backups após importar todos
-                backupManager.ManageBackupLimit("My Summer Car", backupLimit);
-                
-                // Deletar pasta Backup externa após importação bem-sucedida
-                if (importedCount > 0)
-                {
-                    try
-                    {
-                        Directory.Delete(externalBackupRootPath, true);
-                        ModConsole.Log("<color=#00ff00>[BackupSave] Pasta de backups externos deletada com sucesso.</color>");
-                    }
-                    catch (Exception ex)
-                    {
-                        ModConsole.Error("[BackupSave] Erro ao deletar pasta de backups externos\n" + ex.Message);
-                    }
-                }
-                
-                return importedCount;
-            }
-            catch (Exception ex)
-            {
-                ModConsole.Error("[BackupSave] Erro ao importar backups externos\n" + ex.Message);
+            if (backupManager == null)
                 return 0;
+
+            string externalBackupRootPath = GetExternalBackupRootPath();
+            
+            if (!Directory.Exists(externalBackupRootPath))
+                return 0;
+            
+            string[] backups = GetExternalBackupList();
+            if (backups.Length == 0)
+                return 0;
+            
+            int importedCount = 0;
+            foreach (string backupName in backups)
+            {
+                string externalBackupPath = Path.Combine(externalBackupRootPath, backupName);
+                string importedName = "IMPORTADO - " + backupName;
+                
+                // Usar BackupManager para criar o backup importado
+                backupManager.ImportExternalBackupPath(externalBackupPath, importedName, backupLimit);
+                importedCount++;
+                
+                ModConsole.Log("<color=#00ff00>[BackupSave] Backup externo importado: " + importedName + "</color>");
             }
+            
+            // Aplicar limite de backups após importar todos
+            backupManager.ManageBackupLimit("My Summer Car", backupLimit);
+            
+            // Deletar pasta Backup externa após importação bem-sucedida
+            if (importedCount > 0)
+            {
+                Directory.Delete(externalBackupRootPath, true);
+                ModConsole.Log("<color=#00ff00>[BackupSave] Pasta de backups externos deletada com sucesso.</color>");
+                
+                // Pop-up informando importação concluída
+                ModUI.ShowMessage("Total de " + importedCount + " backup(s) importado(s) com sucesso!\nPasta de backups deletada.\nFeche e abra o jogo para que os backups apareçam na lista.", "IMPORTAÇÃO CONCLUÍDA");
+            }
+            
+            return importedCount;
         }
     }
 }

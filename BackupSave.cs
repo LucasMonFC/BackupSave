@@ -355,18 +355,7 @@ namespace BackupSave
         private void OnImportAllExternalBackupsClick()
         {
             int backupLimit = GetBackupLimit();
-            int importedCount = saveImportManager.ImportAllExternalBackups(backupLimit);
-            if (importedCount > 0)
-            {
-                string message = importedCount + " backup" + (importedCount > 1 ? "s" : "") + " importado(s) com sucesso!";
-                ModConsole.Log("<color=#00ff00>" + LOG_PREFIX + message + "</color>");
-                ShowPopup(message, "Pasta de backups deletada.", "#00ff00", "SUCESSO");
-            }
-            else
-            {
-                ModConsole.Log("<color=#ff0000>" + LOG_PREFIX + "Nenhum backup externo foi importado</color>");
-                ShowPopup("Nenhum backup encontrado", "Pasta pode estar vazia", "#ff0000", "FALHA");
-            }
+            saveImportManager.ImportAllExternalBackups(backupLimit);
         }
 
         private void ShowPopup(string message, string detailName = "", string color = "#00ff00", string title = "SUCESSO")
