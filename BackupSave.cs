@@ -2,6 +2,7 @@ using MSCLoader;
 using System;
 using System.IO;
 using System.Reflection;
+using UnityEngine;
 
 namespace BackupSave
 {
@@ -170,13 +171,13 @@ namespace BackupSave
             string gameFolder = GetGameSaveFolder();
 
             // Header principal do mod com Informações e Créditos
-            Settings.AddHeader("BACKUPSAVE");
+            Settings.AddHeader("BACKUPSAVE", new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255));
             Settings.CreateGroup(true);
-            Settings.AddButton("<color=cyan>ℹ INFORMAÇÕES</color>", new Action(OnShowModInfoClick));
+            Settings.AddButton("<color=white>ℹ INFORMAÇÕES</color>", new Action(OnShowModInfoClick));
             Settings.AddButton("<color=yellow>★ CRÉDITOS</color>", new Action(OnShowCreditsClick));
             Settings.EndGroup();
 
-            Settings.AddHeader("CONFIGURAÇÕES DE SAVE");
+            Settings.AddHeader("CONFIGURAÇÕES DE SAVE", new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255));
             
             Settings.AddText("<b>Modo de Restauração Automática</b>\nO mod detecta quando o save é deletado (morte em Modo Mortal) e pode restaurar automaticamente o último backup.");
             autoRestoreModeSlider = Settings.AddSlider("autoRestoreMode", "Modo de Restauração", 0, 2, 1, null, MODE_NAMES);
@@ -216,13 +217,13 @@ namespace BackupSave
 
             
             // Create Restore Point Section with header collapsed by default
-            Settings.AddHeader("CRIAR PONTO DE RESTAURAÇÃO", collapsedByDefault: true);
+            Settings.AddHeader("CRIAR PONTO DE RESTAURAÇÃO", new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255), collapsedByDefault: true);
             SettingsTextBox restorePointInput = Settings.AddTextBox("restorePointName", "Nome do Ponto de Restauração (opcional)", string.Empty, "Digite o nome aqui...");
             Settings.AddButton("Criar Ponto de Restauração", new Action(() => OnCreateRestorePointClick(restorePointInput)));
             Settings.AddText("Os pontos de restauração são permanentes e não serão excluídos pelos limites de backup.");
             
             // Delete Meshsave Section with header collapsed by default
-            Settings.AddHeader("DELETAR ARQUIVO MESHSAVE", collapsedByDefault: true);
+            Settings.AddHeader("DELETAR ARQUIVO MESHSAVE", new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255), collapsedByDefault: true);
             Settings.AddText("Delete o arquivo meshsave.txt para restaurar o formato do veículo.");
             Settings.CreateGroup(true);
             Settings.AddButton("<color=red>Deletar meshsave.txt</color>", new Action(OnDeleteMeshSaveClick));
@@ -232,7 +233,7 @@ namespace BackupSave
             // Save Import Button - Only show if in MWC with header collapsed by default
             if (ModLoader.CurrentGame == Game.MyWinterCar && saveImportManager.HasMSCSave())
             {
-                Settings.AddHeader("IMPORTAR SAVE", collapsedByDefault: true);
+                Settings.AddHeader("IMPORTAR SAVE", new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255), collapsedByDefault: true);
                 Settings.AddText("Importe seu save de My Summer Car para My Winter Car com backup.");
                 Settings.AddButton("Importar Save do My Summer Car", new Action(OnImportSaveClick));
             }
@@ -240,7 +241,7 @@ namespace BackupSave
             // External Backup Import Button - Only show if in MSC and external backups exist
             if (ModLoader.CurrentGame == Game.MySummerCar && saveImportManager.HasExternalBackups())
             {
-                Settings.AddHeader("IMPORTAR BACKUPS DE SAVEBACKUPER", collapsedByDefault: true);
+                Settings.AddHeader("IMPORTAR BACKUPS DE SAVEBACKUPER", new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255), collapsedByDefault: true);
                 Settings.AddText("Importar todos os backups de: C:\\Users\\{user}\\AppData\\LocalLow\\Amistech\\Backup");
                 Settings.AddButton("Importar Todos os Backups", new Action(() => OnImportAllExternalBackupsClick()));
                 Settings.AddText("Backups importados receberao o prefixo 'IMPORTADO - ' para melhor identificação.");
@@ -273,8 +274,8 @@ namespace BackupSave
             bool success = isRestorePoint ? 
                 backupManager.RestoreRestorePointByName(GetGameSaveFolder(), cleanName) :
                 backupManager.RestoreBackupByName(GetGameSaveFolder(), cleanName);
-            ShowPopup(success ? (isRestorePoint ? "Seu ponto de restauração foi restaurado com sucesso!" : "Seu backup foi restaurado com sucesso!") : "Falha ao restaurar", 
-                cleanName, success ? "#00ff00" : "#ff0000", success ? "SUCESSO" : "FALHA");
+            ShowPopup(success ? (isRestorePoint ? "Seu ponto de restauração foi restaurado com sucesso!" : "Seu backup foi restaurado com sucesso!") : (isRestorePoint ? "Ponto de restauração já foi deletado." : "Backup já foi deletado."), 
+                cleanName, success ? (isRestorePoint ? "#ff9900" : "#00ff00") : "#ff0000", success ? "SUCESSO" : "FALHA");
         }
 
         private void OnDeleteBackupClick()
@@ -288,8 +289,8 @@ namespace BackupSave
             bool success = isRestorePoint ? 
                 backupManager.DeleteRestorePointByName(gameFolder, cleanName) :
                 backupManager.DeleteBackupByName(gameFolder, cleanName);
-            ShowPopup(success ? (isRestorePoint ? "Ponto de restauração foi deletado com sucesso!" : "Backup foi deletado com sucesso!") : (isRestorePoint ? "Falha ao deletar o ponto" : "Falha ao deletar o backup"), 
-                cleanName, success ? "#ffaa00" : "#ff0000", success ? "SUCESSO" : "FALHA");
+            ShowPopup(success ? (isRestorePoint ? "Ponto de restauração foi deletado com sucesso!" : "Backup foi deletado com sucesso!") : (isRestorePoint ? "Ponto de restauração foi deletado." : "Backup foi deletado."), 
+                cleanName, success ? (isRestorePoint ? "#ffaa00" : "#00ff00") : "#ff0000", success ? "SUCESSO" : "FALHA");
         }
 
         private void OnDeleteMeshSaveClick()
