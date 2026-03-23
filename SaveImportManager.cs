@@ -28,34 +28,25 @@ namespace BackupSave
         }
 
         /// <summary>
-        /// Delete all files in MWC save folder
+        /// Gerencia arquivos de save (deleta ou copia conforme necessário)
         /// </summary>
-        private void DeleteAllSaveFiles(string mwcSavePath)
+        private void ManageSaveFiles(string sourcePath, string destPath, bool isDelete = false)
         {
-            if (Directory.Exists(mwcSavePath))
+            if (isDelete)
             {
-                DirectoryInfo dirInfo = new DirectoryInfo(mwcSavePath);
-                foreach (FileInfo file in dirInfo.GetFiles())
+                if (Directory.Exists(destPath))
                 {
-                    file.Delete();
+                    foreach (FileInfo file in new DirectoryInfo(destPath).GetFiles())
+                        file.Delete();
                 }
             }
-        }
-
-        /// <summary>
-        /// Copy all save files from MSC to MWC (only files that exist)
-        /// </summary>
-        private void CopyAllSaveFiles(string mscSavePath, string mwcSavePath)
-        {
-            foreach (string fileName in filesToImport)
+            else
             {
-                string sourceFile = Path.Combine(mscSavePath, fileName);
-                string destFile = Path.Combine(mwcSavePath, fileName);
-                
-                // Only copy if the file exists in source
-                if (File.Exists(sourceFile))
+                foreach (string fileName in filesToImport)
                 {
-                    File.Copy(sourceFile, destFile);
+                    string sourceFile = Path.Combine(sourcePath, fileName);
+                    if (File.Exists(sourceFile))
+                        File.Copy(sourceFile, Path.Combine(destPath, fileName));
                 }
             }
         }
@@ -89,8 +80,8 @@ namespace BackupSave
                 if (!Directory.Exists(mwcSavePath))
                     Directory.CreateDirectory(mwcSavePath);
 
-                DeleteAllSaveFiles(mwcSavePath);
-                CopyAllSaveFiles(mscSavePath, mwcSavePath);
+                ManageSaveFiles(mscSavePath, mwcSavePath, true);  // Delete
+                ManageSaveFiles(mscSavePath, mwcSavePath);        // Copy
 
                 ModConsole.Log("<color=#00ff00>[BackupSave] Save importado com sucesso do My Summer Car para o My Winter Car!</color>");
                 
@@ -187,14 +178,8 @@ namespace BackupSave
                 return 0;
 
             string externalBackupRootPath = GetExternalBackupRootPath();
-            
-            if (!Directory.Exists(externalBackupRootPath))
-            {
-                ModUI.ShowMessage("A importação já foi realizada.\nFeche e abra o jogo para atualizar a lista de backups.", "IMPORTAÇÃO JÁ REALIZADA");
-                return 0;
-            }
-            
             string[] backups = GetExternalBackupList();
+            
             if (backups.Length == 0)
             {
                 ModUI.ShowMessage("A importação já foi realizada.\nFeche e abra o jogo para atualizar a lista de backups.", "IMPORTAÇÃO JÁ REALIZADA");

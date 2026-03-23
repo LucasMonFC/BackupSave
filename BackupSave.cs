@@ -1,7 +1,7 @@
 using MSCLoader;
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using UnityEngine;
 
 namespace BackupSave
@@ -15,8 +15,6 @@ namespace BackupSave
         public override string Version => "1.0.0";
         public override string Description => "Sistema avançado de backup automático com restauração fácil, controle de limite de backups.";
         public override Game SupportedGames => Game.MySummerCar | Game.MyWinterCar;
-
-        public override byte[] Icon { get; set; }
 
         private BackupManager backupManager;
         private SaveImportManager saveImportManager;
@@ -33,33 +31,6 @@ namespace BackupSave
             backupManager = new BackupManager(MSCSaves);
             saveImportManager = new SaveImportManager(MSCSaves, backupManager);
             autoRestoreManager = new AutoRestoreManager(backupManager, MSCSaves);
-
-            // Carregar ícone do assembly (embedded resource)
-            try
-            {
-                var assembly = Assembly.GetExecutingAssembly();
-                var resourceName = "BackupSave.icone.png";
-                using (Stream resourceStream = assembly.GetManifestResourceStream(resourceName))
-                {
-                    if (resourceStream != null)
-                    {
-                        using (MemoryStream memoryStream = new MemoryStream())
-                        {
-                            byte[] buffer = new byte[4096];
-                            int bytesRead;
-                            while ((bytesRead = resourceStream.Read(buffer, 0, buffer.Length)) > 0)
-                            {
-                                memoryStream.Write(buffer, 0, bytesRead);
-                            }
-                            Icon = memoryStream.ToArray();
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                ModConsole.Error(LOG_PREFIX + "Erro ao carregar ícone: " + ex.Message);
-            }
         }
         
         private SettingsSliderInt backupLimitSlider;
@@ -68,11 +39,8 @@ namespace BackupSave
         private SettingsCheckBox autoDeleteMeshsaveCheckBox;
         private SettingsCheckBox prefixCharacterNameCheckBox;
         
-        // Listas de backups/restore points carregadas no Mod_OnLoad
-        private string[] mscBackupList = new string[] { };
-        private string[] mwcBackupList = new string[] { };
-        private string[] mscRestorePointList = new string[] { };
-        private string[] mwcRestorePointList = new string[] { };
+        // Listas de backups/restore points carregadas no Mod_OnLoad (consolidadas)
+        private Dictionary<string, string[]> backupLists = new Dictionary<string, string[]>();
         private bool listsLoaded = false;
         
         // Performance cache (OTIMIZAÇÃO)
@@ -120,44 +88,31 @@ namespace BackupSave
         {
             if (listsLoaded) return;
             
-            mscBackupList = backupManager.GetBackupList("My Summer Car");
-            mwcBackupList = backupManager.GetBackupList("My Winter Car");
-            mscRestorePointList = backupManager.GetRestorePointList("My Summer Car");
-            mwcRestorePointList = backupManager.GetRestorePointList("My Winter Car");
+            backupLists["mscBackup"] = backupManager.GetBackupList("My Summer Car");
+            backupLists["mwcBackup"] = backupManager.GetBackupList("My Winter Car");
+            backupLists["mscRestorePoint"] = backupManager.GetRestorePointList("My Summer Car");
+            backupLists["mwcRestorePoint"] = backupManager.GetRestorePointList("My Winter Car");
             listsLoaded = true;
         }
 
-        // Cria uma lista unificada de backups e restore points com cores
         private string[] GetUnifiedBackupAndRestorePointList(string gameFolder)
         {
-            string[] backupList = gameFolder == "My Summer Car" ? mscBackupList : mwcBackupList;
-            string[] restorePointList = gameFolder == "My Summer Car" ? mscRestorePointList : mwcRestorePointList;
+            string backupKey = gameFolder == "My Summer Car" ? "mscBackup" : "mwcBackup";
+            string rpKey = gameFolder == "My Summer Car" ? "mscRestorePoint" : "mwcRestorePoint";
+            
+            string[] backupList = backupLists.ContainsKey(backupKey) ? backupLists[backupKey] : new string[] { };
+            string[] restorePointList = backupLists.ContainsKey(rpKey) ? backupLists[rpKey] : new string[] { };
             
             int totalCount = backupList.Length + restorePointList.Length;
             string[] unifiedList = new string[totalCount];
             
-            // Copiar backups com cor verde
             for (int i = 0; i < backupList.Length; i++)
-            {
-                string backupName = backupList[i];
-                // Se o nome não contém a tag de cor, adicionar verde
-                if (!backupName.StartsWith("<color=#21ff13>"))
-                {
-                    backupName = "<color=#21ff13>" + backupName + "</color>";
-                }
-                unifiedList[i] = backupName;
-            }
+                unifiedList[i] = backupList[i].StartsWith("<color=#21ff13>") ? backupList[i] : "<color=#21ff13>" + backupList[i] + "</color>";
             
-            // Copiar restore points com cor laranja
             for (int i = 0; i < restorePointList.Length; i++)
             {
-                string restorePointName = restorePointList[i];
-                // Se o nome não contém a tag de cor, adicionar laranja
-                if (!restorePointName.StartsWith("<color=#ff9900>"))
-                {
-                    restorePointName = "<color=#ff9900>PR: " + restorePointName + "</color>";
-                }
-                unifiedList[backupList.Length + i] = restorePointName;
+                string rpName = restorePointList[i];
+                unifiedList[backupList.Length + i] = rpName.StartsWith("<color=#ff9900>") ? rpName : "<color=#ff9900>PR: " + rpName + "</color>";
             }
             
             return unifiedList;
@@ -274,7 +229,7 @@ namespace BackupSave
             bool success = isRestorePoint ? 
                 backupManager.RestoreRestorePointByName(GetGameSaveFolder(), cleanName) :
                 backupManager.RestoreBackupByName(GetGameSaveFolder(), cleanName);
-            ShowPopup(success ? (isRestorePoint ? "Seu ponto de restauração foi restaurado com sucesso!" : "Seu backup foi restaurado com sucesso!") : (isRestorePoint ? "Ponto de restauração já foi deletado." : "Backup já foi deletado."), 
+            ShowPopup(success ? (isRestorePoint ? "Seu ponto de restauração foi restaurado com sucesso!" : "Seu backup foi restaurado com sucesso!") : (isRestorePoint ? "Ponto de restauração foi deletado." : "Backup foi deletado."), 
                 cleanName, success ? (isRestorePoint ? "#ff9900" : "#00ff00") : "#ff0000", success ? "SUCESSO" : "FALHA");
         }
 
