@@ -54,6 +54,7 @@
     <Compile Include="BackupManager.cs" />
     <Compile Include="SaveImportManager.cs" />
     <Compile Include="AutoRestoreManager.cs" />
+    <Compile Include="LocalizationManager.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -10,10 +10,12 @@ namespace BackupSave
         private const string GRAVEYARD_FILE = "graveyard.txt";
         private const string LOG_PREFIX = "[BackupSave] ";
         private string mscSavesPath;
+        private LocalizationManager localizationManager;
 
-        public BackupManager(string mscSavesPath)
+        public BackupManager(string mscSavesPath, LocalizationManager localizationManager = null)
         {
             this.mscSavesPath = mscSavesPath;
+            this.localizationManager = localizationManager;
         }
 
         /// <summary>
@@ -59,7 +61,11 @@ namespace BackupSave
         }
 
         public string GetBackupPath(string gameFolder, string backupName = "") => GetTypePath(gameFolder, "Backups", backupName);
-        public string GetRestorePointPath(string gameFolder, string restorePointName = "") => GetTypePath(gameFolder, "Ponto de Restauração", restorePointName);
+        public string GetRestorePointPath(string gameFolder, string restorePointName = "")
+        {
+            string restorePointFolderName = localizationManager != null ? localizationManager.GetRestorePointFolderName() : "Ponto de Restauração";
+            return GetTypePath(gameFolder, restorePointFolderName, restorePointName);
+        }
 
         private void CopyFilesInDirectory(string sourceDir, string destDir, bool skipGraveyard = false)
         {
@@ -112,7 +118,8 @@ namespace BackupSave
         {
             if (!ValidateSaveFiles(gameFolder))
             {
-                ModConsole.Log("<color=#ffaa00>" + LOG_PREFIX + "Erro ao criar ponto de restauração: Nenhum arquivo de save válido encontrado!</color>");
+                if (localizationManager != null)
+                    ModConsole.Log("<color=#ffaa00>" + localizationManager.GetString("log", "restorePointCreatedFailed", "[BackupSave] Error creating restore point: No valid save file found!") + "</color>");
                 return null;
             }
             string timestamp = DateTime.Now.ToString("dd.MM.yyyy HH-mm-ss");
@@ -126,15 +133,20 @@ namespace BackupSave
             {
                 Directory.CreateDirectory(folderPath);
                 CopyFilesInDirectory(GetSavePath(gameFolder), folderPath);
-                string type = isRestorePoint ? "Ponto de Restauração" : "Backup";
-                ModConsole.Log("<color=#00ff00>" + LOG_PREFIX + type + " criado com sucesso - Nome: " + name + "</color>");
+                string typeLog = isRestorePoint ? "[BackupSave] Ponto de restauração criado com sucesso - Nome: " : "[BackupSave] Backup criado com sucesso - Nome: ";
+                if (localizationManager != null)
+                    typeLog = isRestorePoint ? localizationManager.GetString("log", "restorePointCreated", "[BackupSave] Ponto de restauração criado com sucesso - Nome: ") : localizationManager.GetString("log", "backupCreated", "[BackupSave] Backup criado com sucesso - Nome: ");
+                ModConsole.Log("<color=#00ff00>" + typeLog + name + "</color>");
                 if (!isRestorePoint) ManageBackupLimit(gameFolder, backupLimit);
                 return true;
             }
             catch (Exception ex)
             {
                 string type = isRestorePoint ? "ponto de restauração" : "backup";
-                ModConsole.Error(LOG_PREFIX + "Erro ao criar " + type + "\n" + ex.Message);
+                string errorMsg = "[BackupSave] Erro ao criar " + type;
+                if (localizationManager != null)
+                    errorMsg = isRestorePoint ? localizationManager.GetString("log", "errorCreatingRestorePoint", "[BackupSave] Erro ao criar ponto de restauração") : localizationManager.GetString("log", "errorCreatingBackup", "[BackupSave] Erro ao criar backup");
+                ModConsole.Error(errorMsg + "\n" + ex.Message);
                 return false;
             }
         }
@@ -153,14 +165,17 @@ namespace BackupSave
                 try
                 {
                     list[i].Delete(true);
-                    ModConsole.Log("<color=#ffaa00>" + LOG_PREFIX + "Backup antigo deletado: " + list[i].Name + "</color>");
+                    string deletedMsg = localizationManager != null ? localizationManager.GetString("log", "oldBackupDeleted", "[BackupSave] Backup antigo deletado: ") : "[BackupSave] Backup antigo deletado: ";
+                    ModConsole.Log("<color=#ffaa00>" + deletedMsg + list[i].Name + "</color>");
                 }
                 catch
                 {
-                    ModConsole.Error(LOG_PREFIX + "Erro ao deletar backup antigo: " + list[i].Name);
+                    string errorMsg = localizationManager != null ? localizationManager.GetString("log", "errorDeletingOldBackup", "[BackupSave] Erro ao deletar backup antigo: ") : "[BackupSave] Erro ao deletar backup antigo: ";
+                    ModConsole.Error(errorMsg + list[i].Name);
                 }
             }
-            ModConsole.Log("<color=#ffaa00>" + LOG_PREFIX + "Limite de backups aplicado. Mantendo apenas os " + backupLimit + " mais recentes.</color>");
+            string limitMsg = localizationManager != null ? localizationManager.GetString("log", "backupLimitApplied", "[BackupSave] Limite de backup aplicado. Mantendo apenas os ") : "[BackupSave] Limite de backup aplicado. Mantendo apenas os ";
+            ModConsole.Log("<color=#ffaa00>" + limitMsg + backupLimit + " mais recentes.</color>");
         }
 
         public bool RestoreLatestBackupAuto(string gameFolder, bool preserveGraveyard = false)
@@ -185,12 +200,14 @@ namespace BackupSave
             {
                 DeleteSaveFiles(savePath, preserveGraveyard);
                 CopyFilesInDirectory(backupPath, savePath, preserveGraveyard);
-                ModConsole.Log("<color=#00ff00>" + LOG_PREFIX + "Backup restaurado com sucesso: " + backupName + "</color>");
+                string restoreMsg = localizationManager != null ? localizationManager.GetString("log", "backupRestored", "[BackupSave] Backup restaurado com sucesso: ") : "[BackupSave] Backup restaurado com sucesso: ";
+                ModConsole.Log("<color=#00ff00>" + restoreMsg + backupName + "</color>");
                 return true;
             }
             catch (Exception ex)
             {
-                ModConsole.Error(LOG_PREFIX + "Erro crítico ao restaurar backup: " + ex.Message);
+                string errorMsg = localizationManager != null ? localizationManager.GetString("log", "errorRestoringBackup", "[BackupSave] Erro crítico ao restaurar backup: ") : "[BackupSave] Erro crítico ao restaurar backup: ";
+                ModConsole.Error(errorMsg + ex.Message);
                 return false;
             }
         }
@@ -201,12 +218,15 @@ namespace BackupSave
             {
                 if (!Directory.Exists(itemPath)) return false;
                 Directory.Delete(itemPath, true);
-                ModConsole.Log("<color=#ffaa00>" + LOG_PREFIX + type + " deletado: " + itemName + "</color>");
+                string deleteMsg = localizationManager != null ? localizationManager.GetString("log", "backupDeleted", "[BackupSave] Backup deletado: ") : "[BackupSave] Backup deletado: ";
+                ModConsole.Log("<color=#ffaa00>" + deleteMsg + itemName + "</color>");
                 return true;
             }
             catch (Exception ex)
             {
-                ModConsole.Error(LOG_PREFIX + "Erro ao deletar " + type.ToLower() + "\n" + ex.Message);
+                string typeEn = type == "Ponto de Restauração" ? "ponto de restauração" : "backup";
+                string errorMsg = localizationManager != null ? localizationManager.GetString("log", "errorDeletingItem", "[BackupSave] Erro ao deletar item: ") : "[BackupSave] Erro ao deletar item: ";
+                ModConsole.Error(errorMsg + typeEn + "\n" + ex.Message);
                 return false;
             }
         }
@@ -228,7 +248,8 @@ namespace BackupSave
                 string meshSaveFile = Path.Combine(GetSavePath(gameFolder), "meshsave.txt");
                 if (!File.Exists(meshSaveFile)) return false;
                 File.Delete(meshSaveFile);
-                ModConsole.Log("<color=#00ff00>" + LOG_PREFIX + "Arquivo meshsave.txt deletado com sucesso!</color>");
+                string deleteMsg = localizationManager != null ? localizationManager.GetString("log", "meshsaveDeleted", "[BackupSave] Arquivo meshsave.txt deletado com sucesso!") : "[BackupSave] Arquivo meshsave.txt deletado com sucesso!";
+                ModConsole.Log("<color=#00ff00>" + deleteMsg + "</color>");
                 return true;
             }
             catch (Exception ex)
