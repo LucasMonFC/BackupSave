@@ -241,6 +241,7 @@ namespace BackupSave
             AddTranslationSafe("button.restore", "RESTORE");
             AddTranslationSafe("button.delete", "<color=red>DELETE</color>");
             AddTranslationSafe("button.restartMenu", "<color=cyan>RESTART MENU</color>");
+            AddTranslationSafe("button.openBackupFolder", "<color=white>OPEN BACKUP FOLDER</color>");
 
             // ===== DESCRIPTIVE TEXTS - ENGLISH ONLY =====
             AddTranslationSafe("text.autoRestore", "<b>Automatic Restore Mode</b>\nThe mod detects when the save is deleted (death in Mortal Mode) and can automatically restore the latest backup.");

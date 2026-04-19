@@ -1,6 +1,7 @@
 using MSCLoader;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using UnityEngine;
 
@@ -181,6 +182,9 @@ namespace BackupSave
                 Settings.AddButton(localizationManager.GetString("button", "restartMenu", "<color=cyan>REINICIAR MENU</color>"), new Action(OnRestartLevel1Click));
                 Settings.EndGroup();
                 
+                // Add Open Backup Folder button
+                Settings.AddButton(localizationManager.GetString("button", "openBackupFolder", "<color=white>ABRIR PASTA DE BACKUPS</color>"), new Action(OnOpenBackupFolderClick), SettingsButton.ButtonIcon.Folder);
+                
                 Settings.AddText(localizationManager.GetString("text", "reloadTip", "Restaurar ou deletar são aplicadas imediatamente. Recarregue o jogo para atualizar a lista de saves."));
             }
 
@@ -330,6 +334,19 @@ namespace BackupSave
         {
             int backupLimit = GetBackupLimit();
             saveImportManager.ImportAllExternalBackups(backupLimit);
+        }
+
+        private void OnOpenBackupFolderClick()
+        {
+            string gameFolder = GetGameSaveFolder();
+            string backupFolderPath = backupManager.GetBackupRootPath(gameFolder);
+            
+            ProcessStartInfo psi = new ProcessStartInfo()
+            {
+                FileName = backupFolderPath,
+                UseShellExecute = true
+            };
+            Process.Start(psi);
         }
 
         private void ShowPopup(string message, string detailName = "", string color = "#00ff00", string title = "SUCESSO")

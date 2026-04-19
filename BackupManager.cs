@@ -67,6 +67,15 @@ namespace BackupSave
             return GetTypePath(gameFolder, restorePointFolderName, restorePointName);
         }
 
+        /// <summary>
+        /// Obtém o caminho da pasta raiz de BackupSave para o jogo (MSC BackupSave ou MWC BackupSave)
+        /// </summary>
+        public string GetBackupRootPath(string gameFolder)
+        {
+            string backupFolderName = GetBackupFolderName(gameFolder);
+            return Path.Combine(Path.Combine(mscSavesPath, "BackupSave"), backupFolderName);
+        }
+
         private void CopyFilesInDirectory(string sourceDir, string destDir, bool skipGraveyard = false)
         {
             foreach (string file in Directory.GetFiles(sourceDir))
