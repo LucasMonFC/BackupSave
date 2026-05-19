@@ -20,7 +20,9 @@ namespace BackupSave
         {
             InitializeTranslations();
             currentLanguage = DetectSystemLanguage();
-            ModConsole.Print("[BackupSave] Idioma detectado automaticamente: " + (currentLanguage == Language.PortuguesBrasil ? "pt-BR" : "en-US"));
+            string detectedLanguage = currentLanguage == Language.PortuguesBrasil ? "pt-BR" : "en-US";
+            string detectedMessage = currentLanguage == Language.PortuguesBrasil ? "Idioma detectado automaticamente: " : "Language detected automatically: ";
+            ModConsole.Print("[BackupSave] " + detectedMessage + detectedLanguage);
         }
 
         [DllImport("kernel32.dll")]
@@ -57,21 +59,6 @@ namespace BackupSave
             return (languageId & 0x3ff) == PortuguesePrimaryLanguageId;
         }
 
-        public Language GetLanguage()
-        {
-            return currentLanguage;
-        }
-
-        public string GetLanguageName(Language language)
-        {
-            switch (language)
-            {
-                case Language.PortuguesBrasil: return "PORTUGUÊS (BRASIL)";
-                case Language.English: return "ENGLISH";
-                default: return "PORTUGUÊS (BRASIL)";
-            }
-        }
-
         public string GetString(string section, string key, string defaultValue = "")
         {
             if (currentLanguage == Language.English)
@@ -93,14 +80,6 @@ namespace BackupSave
                 GetString("mode", "restoreAll", "Restaurar Tudo"),
                 GetString("mode", "restoreWithGraveyard", "Restaurar mantendo as lápides")
             };
-        }
-
-        public string GetAutoRestoreModeLabel()
-        {
-            if (currentLanguage == Language.English)
-                return "Automatic Restoration: ";
-            else
-                return "Restauração Automática: ";
         }
 
         public string GetRestorePointFolderName()
@@ -132,13 +111,10 @@ namespace BackupSave
             AddTranslationSafe("header.createRestorePoint", "CREATE RESTORE POINT");
             AddTranslationSafe("header.deleteMeshsave", "DELETE MESHSAVE FILE");
             AddTranslationSafe("header.importSave", "IMPORT SAVE");
-            AddTranslationSafe("header.backups", "BACKUPS AND RESTORE POINTS");
-            AddTranslationSafe("header.language", "SELECT LANGUAGE");
 
             // ===== BUTTONS - ENGLISH ONLY =====
             AddTranslationSafe("button.info", "<color=cyan>ℹ INFORMATION</color>");
             AddTranslationSafe("button.credits", "<color=yellow>★ CREDITS</color>");
-            AddTranslationSafe("button.confirmLanguage", "CONFIRM LANGUAGE CHANGE");
             AddTranslationSafe("button.restore", "RESTORE");
             AddTranslationSafe("button.delete", "<color=red>DELETE</color>");
             AddTranslationSafe("button.restartMenu", "<color=cyan>RESTART MENU</color>");
@@ -150,31 +126,17 @@ namespace BackupSave
             AddTranslationSafe("text.prefixCharName", "<b>Character Name Prefix</b>\nPrefix backups with the first name of the character to identify them easily.");
             AddTranslationSafe("text.backupsAndPoints", "<b>Backups and Restore Points</b>\nSelect a backup or restore point to restore/delete");
             AddTranslationSafe("text.noBackups", "You don't have any backups or restore points yet.");
-            AddTranslationSafe("text.createRestorePointDesc", "Restore points are permanent and will not be deleted by backup limits.");
-            AddTranslationSafe("text.deleteMeshsaveDesc", "Delete the meshsave.txt file to restore the vehicle format.");
-            AddTranslationSafe("text.importSaveDesc", "Import your save from My Summer Car to My Winter Car with backup.");
 
             // ===== LABELS - ENGLISH ONLY =====
-            AddTranslationSafe("label.language", "Mod Language");
             AddTranslationSafe("label.autoRestoreMode", "Restoration Mode");
             AddTranslationSafe("label.backupLimit", "Maximum Number of Backups to Store");
             AddTranslationSafe("label.selectSave", "Select a save or point");
             AddTranslationSafe("label.restorePointName", "Restore Point Name (optional)");
-            AddTranslationSafe("label.deleteMeshsave", "Delete meshsave automatically");
             AddTranslationSafe("label.autoDeleteMeshsave", "Delete meshsave automatically");
             AddTranslationSafe("label.prefixCharacterName", "Prefix backup with character name");
 
             // ===== POPUPS SUCCESS - ENGLISH ONLY =====
             AddTranslationSafe("popup.successRestored", "Your backup has been successfully restored!");
-            AddTranslationSafe("popup.successDeleted", "was successfully deleted!");
-            AddTranslationSafe("popup.successDeletePoint", "Restore point was successfully deleted!");
-            AddTranslationSafe("popup.successDeleteBackup", "Backup was successfully deleted!");
-            AddTranslationSafe("popup.successDeleteMeshsave", "Meshsave.txt file was successfully deleted!");
-            AddTranslationSafe("popup.successCreatePoint", "Restore point was successfully created!");
-
-            // ===== POPUPS ERROR - ENGLISH ONLY =====
-            AddTranslationSafe("popup.meshsaveNotFound", "Meshsave.txt file not found.");
-            AddTranslationSafe("popup.failCreatePointNoSave", "Failed to create restore point!\nNo valid save file found.");
 
             // ===== POPUP TITLES - ENGLISH ONLY =====
             AddTranslationSafe("popup.titleSuccess", "SUCCESS");
@@ -182,37 +144,11 @@ namespace BackupSave
             AddTranslationSafe("popup.titleWarning", "WARNING");
             AddTranslationSafe("popup.titleInfo", "MOD INFORMATION");
             AddTranslationSafe("popup.titleCredits", "CREDITS");
-            AddTranslationSafe("popup.titleLanguageSelection", "LANGUAGE SELECTION");
             AddTranslationSafe("popup.titleImportCompleted", "IMPORT COMPLETED");
             AddTranslationSafe("popup.titleImportAlreadyDone", "IMPORT ALREADY COMPLETED");
-            AddTranslationSafe("popup.restartGameMessage", "Language changed to English!\nPlease close and reopen the game for the changes to take effect.");
-
-            // ===== INFO AND CREDITS - ENGLISH ONLY =====
-            AddTranslationSafe("info.title", "<b>BackupSave - Backup System</b>");
-            AddTranslationSafe("info.features", "<b>Features:</b>\n• <b>Automatic backups:</b> Every time you load the game a backup is created\n• <b>Automatic restore:</b> Detects death and restores the latest backup automatically\n• <b>Restore Points:</b> Create permanent points to restore whenever you want\n• <b>Limit Control:</b> Set how many backups to keep\n• <b>Delete meshsave:</b> Reset the vehicle format when needed");
-            AddTranslationSafe("credits.basedOn", "<b>Based on:</b>\nSaveBackuper by AnimeForevere");
-            AddTranslationSafe("credits.developedBy", "<b>Developed by:</b>\nLucasMonOficial");
 
             // ===== LOGS - ENGLISH ONLY =====
-            AddTranslationSafe("log.errorCopyFile", "Error copying file");
-            AddTranslationSafe("log.errorCreateBackup", "Error creating backup");
             AddTranslationSafe("log.errorNoValidSave", "No valid save file found!");
-            AddTranslationSafe("log.errorDeleteOldBackup", "Error deleting old backup");
-            AddTranslationSafe("log.errorRestoreBackup", "ERROR: Critical failure restoring backup");
-            AddTranslationSafe("log.deletedOldBackup", "Deleted old backup");
-            AddTranslationSafe("log.languageSaved", "Language saved successfully!");
-
-            // ===== MESSAGES - ENGLISH ONLY =====
-            AddTranslationSafe("message.languageChanged", "Language changed successfully!");
-            AddTranslationSafe("message.creatingMWCBackup", "Creating backup of current My Winter Car save...");
-            AddTranslationSafe("message.saveImported", "Save imported successfully from My Summer Car to My Winter Car!");
-            AddTranslationSafe("message.successImport", "Backup created successfully!\nSave from My Summer Car was imported to My Winter Car.");
-            AddTranslationSafe("message.successImportNoBackup", "Save from My Summer Car was imported to My Winter Car!\nWARNING: Failed to create backup of previous save.");
-            AddTranslationSafe("message.successImportNoSave", "Save from My Summer Car was imported to My Winter Car!\nWARNING: No previous save to backup.");
-            AddTranslationSafe("message.importSaveNotFound", "Error: No save found in My Summer Car!");
-            AddTranslationSafe("message.importExternalSuccess", "Total of");
-            AddTranslationSafe("message.importExternalSuccessEnd", "backup(s) imported successfully!\nBackup folder deleted.\nThe backup list has been updated.");
-            AddTranslationSafe("message.importAlreadyDone", "Import has already been completed.\nThe backup list is already updated.");
 
             // ===== AUTO RESTORE MODES - ENGLISH ONLY =====
             AddTranslationSafe("mode.disabled", "Disabled");
@@ -276,10 +212,6 @@ namespace BackupSave
             // ===== ERROR MESSAGES - ENGLISH ONLY =====
             AddTranslationSafe("popup.failRestorePoint", "Failed to restore the restore point");
             AddTranslationSafe("popup.failRestoreBackup", "Failed to restore the backup");
-            AddTranslationSafe("popup.failDeletePoint", "Failed to delete the restore point");
-            AddTranslationSafe("popup.failDeleteBackup", "Failed to delete the backup");
-            AddTranslationSafe("popup.failDeleteMeshsave", "Failed to delete meshsave.txt");
-            AddTranslationSafe("popup.failCreatePoint", "Failed to create restore point");
             AddTranslationSafe("popup.errorImport", "Error importing save: ");
             
             // ===== LOG MESSAGES - ENGLISH ONLY =====
@@ -289,7 +221,6 @@ namespace BackupSave
             // ===== IMPORT MESSAGES - ENGLISH ONLY =====
             AddTranslationSafe("popup.importSaveNotFound", "Error: No save found in My Summer Car!");
             AddTranslationSafe("popup.successImport", "Backup created successfully!\nSave from My Summer Car was imported to My Winter Car.");
-            AddTranslationSafe("popup.successImportNoBackup", "Save from My Summer Car was imported to My Winter Car!\nWARNING: Failed to create backup of previous save.");
             AddTranslationSafe("popup.successImportNoSave", "Save from My Summer Car was imported to My Winter Car!\nWarning: No previous save to backup.");
             AddTranslationSafe("popup.warningBackupFailed", "WARNING: Failed to create backup of previous save.");
             AddTranslationSafe("popup.importPartial", "Some backups were imported, but a few failed.\nThe original folder was kept so you can try again.");
@@ -305,16 +236,13 @@ namespace BackupSave
             AddTranslationSafe("log.restorePointCreatedFailed", "Error creating restore point: No valid save file found!");
             AddTranslationSafe("log.backupRestored", "[BackupSave] Backup restored successfully: ");
             AddTranslationSafe("log.backupDeleted", "[BackupSave] Backup deleted: ");
-            AddTranslationSafe("log.restorePointDeleted", "[BackupSave] Restore point deleted: ");
             AddTranslationSafe("log.oldBackupDeleted", "[BackupSave] Old backup deleted: ");
             AddTranslationSafe("log.backupLimitApplied", "[BackupSave] Backup limit applied. Keeping only the ");
             AddTranslationSafe("log.meshsaveDeleted", "[BackupSave] Meshsave.txt file successfully deleted!");
-            AddTranslationSafe("log.errorCopyingFile", "Error copying file: ");
             AddTranslationSafe("log.errorCreatingBackup", "[BackupSave] Error creating backup: ");
             AddTranslationSafe("log.errorDeletingOldBackup", "[BackupSave] Error deleting old backup: ");
             AddTranslationSafe("log.errorRestoringBackup", "[BackupSave] Critical error restoring backup: ");
             AddTranslationSafe("log.errorDeletingItem", "[BackupSave] Error deleting item: ");
-            AddTranslationSafe("log.errorDeletingMeshsave", "[BackupSave] Error deleting meshsave.txt: ");
 
             // ===== IMPORT LOGS - ENGLISH ONLY =====
             AddTranslationSafe("log.externalBackupImported", "[BackupSave] External backup imported: ");

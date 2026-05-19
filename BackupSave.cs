@@ -56,9 +56,6 @@ namespace BackupSave
         // Rastrear mudança no slider de Modo de Restauração para logar quando altera
         private int lastAutoRestoreMode = -1; // Iniciado com -1 para não fazer log na primeira carga
         
-        // Constante compartilhada de modos de restauração
-        private static readonly string[] MODE_NAMES = { "Desligada", "Restaurar Tudo", "Restaurar mantendo as lápides" };
-        
         private string GetGameSaveFolder()
             => ModLoader.CurrentGame == Game.MySummerCar ? "My Summer Car" : "My Winter Car";
 
