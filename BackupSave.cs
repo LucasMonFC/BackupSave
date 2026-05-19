@@ -1,8 +1,9 @@
 using MSCLoader;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
+using System.Reflection;
 using UnityEngine;
 
 namespace BackupSave
@@ -10,6 +11,7 @@ namespace BackupSave
     public class SaveManager : Mod
     {
         private const string LOG_PREFIX = "[BackupSave] ";
+        private const string NO_BACKUPS_ITEM = "<color=#ffaa00>Nenhum backup disponível</color>";
         public override string ID => "BackupSave";
         public override string Name => "BackupSave";
         public override string Author => "LucasMonOficial";
@@ -37,8 +39,6 @@ namespace BackupSave
             autoRestoreManager = new AutoRestoreManager(backupManager, MSCSaves, localizationManager);
         }
 
-        private bool languageSelectionShown = false;
-        
         private SettingsSliderInt backupLimitSlider;
         private SettingsDropDownList SavesList;
         private SettingsSliderInt autoRestoreModeSlider;
@@ -48,6 +48,7 @@ namespace BackupSave
         // Listas de backups/restore points carregadas no Mod_OnLoad (consolidadas)
         private Dictionary<string, string[]> backupLists = new Dictionary<string, string[]>();
         private bool listsLoaded = false;
+        private bool autoMeshsaveDeleteAttemptedInMenu = false;
         
         // Performance cache (OTIMIZAÇÃO)
         private string[] backupLimitValuesCache = null;
@@ -100,6 +101,93 @@ namespace BackupSave
             backupLists["mscRestorePoint"] = backupManager.GetRestorePointList("My Summer Car");
             backupLists["mwcRestorePoint"] = backupManager.GetRestorePointList("My Winter Car");
             listsLoaded = true;
+        }
+
+        private void RefreshBackupLists()
+        {
+            listsLoaded = false;
+            EnsureListsLoaded();
+            UpdateSavesDropdownItems();
+        }
+
+        private string[] GetSavesDropdownItems(string gameFolder)
+        {
+            string[] unifiedList = GetUnifiedBackupAndRestorePointList(gameFolder);
+            return unifiedList.Length == 0 ? new string[] { NO_BACKUPS_ITEM } : unifiedList;
+        }
+
+        private bool IsNoBackupsItem(string itemName)
+        {
+            return string.IsNullOrEmpty(itemName) || itemName == NO_BACKUPS_ITEM;
+        }
+
+        private void UpdateSavesDropdownItems()
+        {
+            if (SavesList == null)
+                return;
+
+            string[] items = GetSavesDropdownItems(GetGameSaveFolder());
+
+            try
+            {
+                Type listType = typeof(SettingsDropDownList);
+                FieldInfo itemsField = listType.GetField("ArrayOfItems", BindingFlags.Instance | BindingFlags.NonPublic);
+                FieldInfo valueField = listType.GetField("Value", BindingFlags.Instance | BindingFlags.NonPublic);
+                FieldInfo defaultValueField = listType.GetField("DefaultValue", BindingFlags.Instance | BindingFlags.NonPublic);
+
+                if (itemsField != null) itemsField.SetValue(SavesList, items);
+                if (valueField != null) valueField.SetValue(SavesList, 0);
+                if (defaultValueField != null) defaultValueField.SetValue(SavesList, 0);
+
+                UpdateVisibleDropDownItems(items);
+                SavesList.SetSelectedItemIndex(0);
+            }
+            catch (Exception ex)
+            {
+                ModConsole.Error(LOG_PREFIX + "Erro ao atualizar lista de backups: " + ex.Message);
+            }
+        }
+
+        private void UpdateVisibleDropDownItems(string[] items)
+        {
+            FieldInfo settingsElementField = typeof(ModSetting).GetField("SettingsElement", BindingFlags.Instance | BindingFlags.NonPublic);
+            object settingsElement = settingsElementField != null ? settingsElementField.GetValue(SavesList) : null;
+            if (settingsElement == null)
+                return;
+
+            FieldInfo dropDownField = settingsElement.GetType().GetField("dropDownList", BindingFlags.Instance | BindingFlags.Public);
+            object dropDown = dropDownField != null ? dropDownField.GetValue(settingsElement) : null;
+            if (dropDown == null)
+                return;
+
+            Type itemType = Type.GetType("MSCLoader.DropDownListItem, MSCLoader");
+            if (itemType == null)
+                return;
+
+            Type genericListType = typeof(List<>).MakeGenericType(itemType);
+            IList dropDownItems = (IList)Activator.CreateInstance(genericListType);
+            ConstructorInfo constructor = itemType.GetConstructor(new Type[] { typeof(string), typeof(string), typeof(Sprite), typeof(bool), typeof(Action) });
+
+            foreach (string item in items)
+            {
+                object dropDownItem = constructor != null
+                    ? constructor.Invoke(new object[] { item, item, null, false, null })
+                    : Activator.CreateInstance(itemType);
+                dropDownItems.Add(dropDownItem);
+            }
+
+            FieldInfo visibleItemsField = dropDown.GetType().GetField("Items", BindingFlags.Instance | BindingFlags.Public);
+            if (visibleItemsField != null)
+                visibleItemsField.SetValue(dropDown, dropDownItems);
+
+            MethodInfo rebuild = dropDown.GetType().GetMethod("RebuildPanel", BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo redraw = dropDown.GetType().GetMethod("RedrawPanel", BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo updateSelected = dropDown.GetType().GetMethod("UpdateSelected", BindingFlags.Instance | BindingFlags.NonPublic);
+            PropertyInfo selectedIndex = dropDown.GetType().GetProperty("SelectedIndex", BindingFlags.Instance | BindingFlags.Public);
+            if (selectedIndex != null) selectedIndex.SetValue(dropDown, 0, null);
+            if (rebuild != null) rebuild.Invoke(dropDown, null);
+            if (redraw != null) redraw.Invoke(dropDown, null);
+            if (updateSelected != null) updateSelected.Invoke(dropDown, null);
         }
 
         private string[] GetUnifiedBackupAndRestorePointList(string gameFolder)
@@ -166,14 +254,12 @@ namespace BackupSave
             Settings.AddText("____________________________________________________________________________________");
             
             Settings.AddText(localizationManager.GetString("text", "backupsAndPoints", "<b>Backups e Pontos de Restauração</b>\nSelecione um backup ou ponto de restauração para restaurar/deletar"));
-            string[] unifiedList = GetUnifiedBackupAndRestorePointList(gameFolder);
-            if (unifiedList.Length == 0)
+            string[] savesDropdownItems = GetSavesDropdownItems(gameFolder);
+            if (savesDropdownItems.Length == 1 && savesDropdownItems[0] == NO_BACKUPS_ITEM)
             {
                 Settings.AddText(localizationManager.GetString("text", "noBackups", "Você ainda não tem nenhum backup ou ponto de restauração."));
             }
-            else
-            {
-                SavesList = Settings.AddDropDownList("saveselect", localizationManager.GetString("label", "selectSave", "Selecione um save ou ponto"), unifiedList, 0);
+            SavesList = Settings.AddDropDownList("saveselect", localizationManager.GetString("label", "selectSave", "Selecione um save ou ponto"), savesDropdownItems, 0);
                 
                 // Add Restore, Delete and Restart buttons side-by-side using horizontal group
                 Settings.CreateGroup(true);
@@ -185,10 +271,9 @@ namespace BackupSave
                 // Add Open Backup Folder button
                 Settings.AddButton(localizationManager.GetString("button", "openBackupFolder", "<color=white>ABRIR PASTA DE BACKUPS</color>"), new Action(OnOpenBackupFolderClick), SettingsButton.ButtonIcon.Folder);
                 
-                Settings.AddText(localizationManager.GetString("text", "reloadTip", "Restaurar ou deletar são aplicadas imediatamente. Recarregue o jogo para atualizar a lista de saves."));
-            }
+                Settings.AddText(localizationManager.GetString("text", "reloadTip", "Restaurar, criar ou deletar atualiza a lista imediatamente."));
 
-            
+             
             // Create Restore Point Section with header collapsed by default
             Settings.AddHeader(localizationManager.GetString("header", "createRestorePoint", "CRIAR PONTO DE RESTAURAÇÃO"), new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255), collapsedByDefault: true);
             SettingsTextBox restorePointInput = Settings.AddTextBox("restorePointName", localizationManager.GetString("label", "restorePointName", "Nome do Ponto de Restauração (opcional)"), string.Empty, localizationManager.GetString("text", "restorePointPlaceholder", "Digite o nome aqui..."));
@@ -242,13 +327,18 @@ namespace BackupSave
         {
             if (SavesList == null) return;
             string selectedName = SavesList.GetSelectedItemName();
+            if (IsNoBackupsItem(selectedName))
+            {
+                ShowPopup(localizationManager.GetString("text", "noBackups", "Você ainda não tem nenhum backup ou ponto de restauração."), "", "#ffaa00", localizationManager.GetString("popup", "titleWarning", "AVISO"));
+                return;
+            }
             string cleanName = GetCleanBackupName(selectedName);
             bool isRestorePoint = IsRestorePointItem(selectedName);
             bool success = isRestorePoint ? 
                 backupManager.RestoreRestorePointByName(GetGameSaveFolder(), cleanName) :
                 backupManager.RestoreBackupByName(GetGameSaveFolder(), cleanName);
             string successMsg = isRestorePoint ? localizationManager.GetString("popup", "successRestorePoint", "Seu ponto de restauração foi restaurado com sucesso!") : localizationManager.GetString("popup", "successRestoreBackup", "Seu backup foi restaurado com sucesso!");
-            string failMsg = isRestorePoint ? localizationManager.GetString("popup", "deletedPrefix", "Ponto de restauração foi deletado.") : localizationManager.GetString("popup", "deletedPrefix", "Backup foi deletado.");
+            string failMsg = isRestorePoint ? localizationManager.GetString("popup", "failRestorePoint", "Falha ao restaurar o ponto de restauração.") : localizationManager.GetString("popup", "failRestoreBackup", "Falha ao restaurar o backup.");
             ShowPopup(success ? successMsg : failMsg, cleanName, success ? (isRestorePoint ? "#ff9900" : "#00ff00") : "#ff0000", success ? localizationManager.GetString("popup", "titleSuccess", "SUCESSO") : localizationManager.GetString("popup", "titleFailure", "FALHA"));
         }
 
@@ -257,12 +347,18 @@ namespace BackupSave
             if (SavesList == null) return;
             string gameFolder = GetGameSaveFolder();
             string selectedName = SavesList.GetSelectedItemName();
-            if (selectedName == null) return;
+            if (IsNoBackupsItem(selectedName))
+            {
+                ShowPopup(localizationManager.GetString("text", "noBackups", "Você ainda não tem nenhum backup ou ponto de restauração."), "", "#ffaa00", localizationManager.GetString("popup", "titleWarning", "AVISO"));
+                return;
+            }
             string cleanName = GetCleanBackupName(selectedName);
             bool isRestorePoint = IsRestorePointItem(selectedName);
             bool success = isRestorePoint ? 
                 backupManager.DeleteRestorePointByName(gameFolder, cleanName) :
                 backupManager.DeleteBackupByName(gameFolder, cleanName);
+            if (success)
+                RefreshBackupLists();
             string successMsg = isRestorePoint ? localizationManager.GetString("popup", "successDeletePointMsg", "Ponto de restauração foi deletado com sucesso!") : localizationManager.GetString("popup", "successDeleteBackupMsg", "Backup foi deletado com sucesso!");
             string failMsg = isRestorePoint ? localizationManager.GetString("popup", "failDeletePointMsg", "Ponto de restauração foi deletado.") : localizationManager.GetString("popup", "failDeleteBackupMsg", "Backup foi deletado.");
             ShowPopup(success ? successMsg : failMsg, cleanName, success ? (isRestorePoint ? "#ffaa00" : "#00ff00") : "#ff0000", success ? localizationManager.GetString("popup", "titleSuccess", "SUCESSO") : localizationManager.GetString("popup", "titleFailure", "FALHA"));
@@ -283,7 +379,10 @@ namespace BackupSave
             string restorePointName = restorePointInput != null ? restorePointInput.GetValue() : "";
             string createdPointName = backupManager.CreateRestorePoint(gameFolder, restorePointName);
             if (!string.IsNullOrEmpty(createdPointName))
+            {
+                RefreshBackupLists();
                 ShowPopup(localizationManager.GetString("popup", "successCreatePointMsg", "Ponto de restauração foi criado com sucesso!"), createdPointName, "#ff9900", localizationManager.GetString("popup", "titleSuccess", "SUCESSO"));
+            }
             else
                 ShowPopup(localizationManager.GetString("popup", "failCreatePointMsg", "Falha ao criar ponto de restauração!\n\nNenhum arquivo de save válido foi encontrado."), "", "#ff0000", localizationManager.GetString("popup", "titleFailure", "FALHA"));
         }
@@ -326,6 +425,7 @@ namespace BackupSave
             int backupLimit = GetBackupLimit();
             
             saveImportManager.ImportSaveFromMSCToMWC(backupManager, customBackupName, backupLimit);
+            RefreshBackupLists();
         }
 
 
@@ -333,7 +433,8 @@ namespace BackupSave
         private void OnImportAllExternalBackupsClick()
         {
             int backupLimit = GetBackupLimit();
-            saveImportManager.ImportAllExternalBackups(backupLimit);
+            if (saveImportManager.ImportAllExternalBackups(backupLimit) > 0)
+                RefreshBackupLists();
         }
 
         private void OnOpenBackupFolderClick()
@@ -410,8 +511,15 @@ namespace BackupSave
             lastAutoRestoreMode = currentMode;
             autoRestoreManager.SetAutoRestoreMode(currentMode);
             autoRestoreManager.MonitorPlayerDeath(gameFolder);
-            if (GetAutoDeleteMeshsave() && UnityEngine.Application.loadedLevel == 1)
+            if (UnityEngine.Application.loadedLevel != 1)
+            {
+                autoMeshsaveDeleteAttemptedInMenu = false;
+            }
+            else if (GetAutoDeleteMeshsave() && !autoMeshsaveDeleteAttemptedInMenu)
+            {
+                autoMeshsaveDeleteAttemptedInMenu = true;
                 backupManager.DeleteMeshSaveFile(gameFolder);
+            }
         }
 
         private void OnMenuLoad()
@@ -420,70 +528,9 @@ namespace BackupSave
                 return;
                 
             string gameFolder = GetGameSaveFolder();
+            autoMeshsaveDeleteAttemptedInMenu = false;
             autoRestoreManager.CompleteAutoRestore(gameFolder);
-            
-            // Mostrar popup de seleção de idioma na primeira vez
-            if (localizationManager.IsFirstRun() && !languageSelectionShown)
-            {
-                languageSelectionShown = true;
-                ShowLanguageSelectionPopup();
-            }
         }
 
-        private void ShowLanguageSelectionPopup()
-        {
-            // Criar um popup settings customizado para seleção de idioma
-            PopupSetting languagePopup = ModUI.CreatePopupSetting("BackupSave", "CONFIRMAR IDIOMA / CONFIRM LANGUAGE");
-            
-            // Adicionar título informativo
-            languagePopup.AddText("Bem-vindo ao BackupSave!\nWelcome to BackupSave!\n\nSelecione seu idioma / Select your language:");
-            
-            // Adicionar dropdown com opções de idioma
-            string[] languageOptions = new string[] { "PORTUGUÊS (BRASIL)", "ENGLISH" };
-            languagePopup.AddDropDownList("language", "Idioma / Language", languageOptions, 0);
-            
-            // Mostrar o popup com callback
-            languagePopup.ShowPopup(OnLanguageSelectionConfirmed);
-        }
-
-        private void OnLanguageSelectionConfirmed(string response)
-        {
-            // Parser da resposta do popup
-            LanguageSelectionResponse result = ModUI.ParsePopupResponse<LanguageSelectionResponse>(response);
-            
-            if (result == null || result.language < 0 || result.language > 1)
-            {
-                // Padrão: Português
-                result = new LanguageSelectionResponse { language = 0 };
-            }
-            
-            // Aplicar seleção de idioma
-            if (result.language == 0)
-            {
-                OnSelectPortuguese();
-            }
-            else
-            {
-                OnSelectEnglish();
-            }
-        }
-
-        private void OnSelectPortuguese()
-        {
-            localizationManager.SetLanguage(LocalizationManager.Language.PortuguesBrasil);
-            ModUI.ShowMessage("Idioma alterado para Português!\nAs configurações foram salvas.", "IDIOMA SELECIONADO");
-        }
-
-        private void OnSelectEnglish()
-        {
-            localizationManager.SetLanguage(LocalizationManager.Language.English);
-            ModUI.ShowMessage("Language changed to English!\nPlease close and reopen the game for the changes to take effect.", "LANGUAGE SELECTED");
-        }
-        
-        // Classe auxiliar para parsing da resposta do popup
-        private class LanguageSelectionResponse
-        {
-            public int language;
-        }
     }
 }

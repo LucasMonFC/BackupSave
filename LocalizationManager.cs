@@ -1,7 +1,7 @@
 using MSCLoader;
 using System;
 using System.Collections.Generic;
-using System.IO;
+using System.Runtime.InteropServices;
 
 namespace BackupSave
 {
@@ -15,145 +15,46 @@ namespace BackupSave
 
         private Language currentLanguage = Language.PortuguesBrasil;
         private Dictionary<string, string> englishTranslations = new Dictionary<string, string>();
-        private bool isFirstRun = true;
-        private string gameFolder = "";
 
         public LocalizationManager(string gameFolder = "")
         {
-            this.gameFolder = gameFolder;
             InitializeTranslations();
-            LoadLanguageConfiguration();
-            isFirstRun = CheckIfFirstRun();
+            currentLanguage = DetectSystemLanguage();
+            ModConsole.Print("[BackupSave] Idioma detectado automaticamente: " + (currentLanguage == Language.PortuguesBrasil ? "pt-BR" : "en-US"));
         }
 
-        public void SetGameFolder(string gameFolder)
-        {
-            this.gameFolder = gameFolder;
-            LoadLanguageConfiguration();
-        }
+        [DllImport("kernel32.dll")]
+        private static extern int GetUserDefaultUILanguage();
 
-        public bool IsFirstRun() => isFirstRun;
+        [DllImport("kernel32.dll")]
+        private static extern int GetUserDefaultLCID();
 
-        private bool CheckIfFirstRun()
+        [DllImport("kernel32.dll")]
+        private static extern int GetUserDefaultLangID();
+
+        [DllImport("kernel32.dll")]
+        private static extern int GetSystemDefaultUILanguage();
+
+        private Language DetectSystemLanguage()
         {
-            try
+            if (IsPortugueseLanguageId(GetUserDefaultUILanguage()) ||
+                IsPortugueseLanguageId(GetUserDefaultLCID()) ||
+                IsPortugueseLanguageId(GetUserDefaultLangID()) ||
+                IsPortugueseLanguageId(GetSystemDefaultUILanguage()))
             {
-                string configPath = GetLanguageConfigPath();
-                if (configPath == null || !File.Exists(configPath))
-                {
-                    return true;
-                }
+                return Language.PortuguesBrasil;
+            }
+
+            return Language.English;
+        }
+
+        private bool IsPortugueseLanguageId(int languageId)
+        {
+            if (languageId <= 0)
                 return false;
-            }
-            catch { }
-            return true;
-        }
 
-        public void SetLanguage(Language language)
-        {
-            currentLanguage = language;
-            SaveLanguageConfiguration();
-        }
-
-        private string GetLanguageConfigPath()
-        {
-            string[] possiblePaths = new string[]
-            {
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\My Winter Car\\Mods",
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\My Summer Car\\Mods",
-                "C:\\Program Files\\Steam\\steamapps\\common\\My Winter Car\\Mods",
-                "C:\\Program Files\\Steam\\steamapps\\common\\My Summer Car\\Mods"
-            };
-
-            // Se gameFolder foi informado, usar apenas o caminho correto desse jogo
-            if (!string.IsNullOrEmpty(gameFolder))
-            {
-                foreach (string basePath in possiblePaths)
-                {
-                    if (basePath.Contains(gameFolder) && Directory.Exists(basePath))
-                    {
-                        string configDir = Path.Combine(basePath, "Config\\Mod Settings\\BackupSave");
-                        if (!Directory.Exists(configDir))
-                        {
-                            try
-                            {
-                                Directory.CreateDirectory(configDir);
-                            }
-                            catch { }
-                        }
-                        return Path.Combine(configDir, "language.json");
-                    }
-                }
-            }
-
-            // Fallback: procurar por qualquer caminho que exista
-            foreach (string basePath in possiblePaths)
-            {
-                if (Directory.Exists(basePath))
-                {
-                    string configDir = Path.Combine(basePath, "Config\\Mod Settings\\BackupSave");
-                    if (!Directory.Exists(configDir))
-                    {
-                        try
-                        {
-                            Directory.CreateDirectory(configDir);
-                        }
-                        catch { }
-                    }
-                    return Path.Combine(configDir, "language.json");
-                }
-            }
-            return null;
-        }
-
-        private void SaveLanguageConfiguration()
-        {
-            try
-            {
-                string configPath = GetLanguageConfigPath();
-                if (configPath == null) return;
-
-                string json = "{\n  \"language\": " + ((int)currentLanguage).ToString() + ",\n  \"languageName\": \"" + GetLanguageName(currentLanguage) + "\"\n}";
-                File.WriteAllText(configPath, json);
-            }
-            catch { }
-        }
-
-        private void LoadLanguageConfiguration()
-        {
-            try
-            {
-                string configPath = GetLanguageConfigPath();
-                if (configPath == null || !File.Exists(configPath)) 
-                {
-                    return;
-                }
-
-                string content = File.ReadAllText(configPath);
-                
-                // Parser similar ao usado no settings.json
-                int langIndex = content.IndexOf("\"language\"");
-                if (langIndex < 0)
-                {
-                    return;
-                }
-
-                int colonIndex = content.IndexOf(":", langIndex);
-                int commaIndex = content.IndexOf(",", colonIndex);
-                if (commaIndex == -1) commaIndex = content.IndexOf("}", colonIndex);
-
-                string valueStr = content.Substring(colonIndex + 1, commaIndex - colonIndex - 1).Trim();
-                
-                // Remover qualquer caractere não-numérico (mesmo padrão)
-                System.Text.RegularExpressions.Regex rgx = new System.Text.RegularExpressions.Regex("[^0-9]");
-                valueStr = rgx.Replace(valueStr, "");
-
-                if (int.TryParse(valueStr, out int langValue) && langValue >= 0 && langValue <= 1)
-                {
-                    currentLanguage = (Language)langValue;
-                }
-            }
-            catch { }
+            const int PortuguesePrimaryLanguageId = 0x16;
+            return (languageId & 0x3ff) == PortuguesePrimaryLanguageId;
         }
 
         public Language GetLanguage()
@@ -265,8 +166,6 @@ namespace BackupSave
 
             // ===== POPUPS SUCCESS - ENGLISH ONLY =====
             AddTranslationSafe("popup.successRestored", "Your backup has been successfully restored!");
-            AddTranslationSafe("popup.successRestorePoint", "Your restore point has been successfully restored!");
-            AddTranslationSafe("popup.successRestoreBackup", "Your backup has been successfully restored!");
             AddTranslationSafe("popup.successDeleted", "was successfully deleted!");
             AddTranslationSafe("popup.successDeletePoint", "Restore point was successfully deleted!");
             AddTranslationSafe("popup.successDeleteBackup", "Backup was successfully deleted!");
@@ -274,15 +173,8 @@ namespace BackupSave
             AddTranslationSafe("popup.successCreatePoint", "Restore point was successfully created!");
 
             // ===== POPUPS ERROR - ENGLISH ONLY =====
-            AddTranslationSafe("popup.failRestore", "Failed to restore backup");
-            AddTranslationSafe("popup.failRestorePoint", "Failed to restore the restore point");
-            AddTranslationSafe("popup.failRestoreBackup", "Failed to restore the backup");
-            AddTranslationSafe("popup.failDeletePoint", "Failed to delete the restore point");
-            AddTranslationSafe("popup.failDeleteBackup", "Failed to delete the backup");
-            AddTranslationSafe("popup.failDeleteMeshsave", "Failed to delete meshsave.txt");
             AddTranslationSafe("popup.meshsaveNotFound", "Meshsave.txt file not found.");
             AddTranslationSafe("popup.failCreatePointNoSave", "Failed to create restore point!\nNo valid save file found.");
-            AddTranslationSafe("popup.failCreatePoint", "Failed to create restore point");
 
             // ===== POPUP TITLES - ENGLISH ONLY =====
             AddTranslationSafe("popup.titleSuccess", "SUCCESS");
@@ -304,10 +196,9 @@ namespace BackupSave
             // ===== LOGS - ENGLISH ONLY =====
             AddTranslationSafe("log.errorCopyFile", "Error copying file");
             AddTranslationSafe("log.errorCreateBackup", "Error creating backup");
-            AddTranslationSafe("log.errorNoValidSave", "Error creating restore point: No valid save file found!");
+            AddTranslationSafe("log.errorNoValidSave", "No valid save file found!");
             AddTranslationSafe("log.errorDeleteOldBackup", "Error deleting old backup");
             AddTranslationSafe("log.errorRestoreBackup", "ERROR: Critical failure restoring backup");
-            AddTranslationSafe("log.backupLimitApplied", "Backup limit applied. Keeping only the");
             AddTranslationSafe("log.deletedOldBackup", "Deleted old backup");
             AddTranslationSafe("log.languageSaved", "Language saved successfully!");
 
@@ -320,8 +211,8 @@ namespace BackupSave
             AddTranslationSafe("message.successImportNoSave", "Save from My Summer Car was imported to My Winter Car!\nWARNING: No previous save to backup.");
             AddTranslationSafe("message.importSaveNotFound", "Error: No save found in My Summer Car!");
             AddTranslationSafe("message.importExternalSuccess", "Total of");
-            AddTranslationSafe("message.importExternalSuccessEnd", "backup(s) imported successfully!\nBackup folder deleted.\nClose and open the game for the backups to appear in the list.");
-            AddTranslationSafe("message.importAlreadyDone", "Import has already been completed.\nClose and open the game to update the backup list.");
+            AddTranslationSafe("message.importExternalSuccessEnd", "backup(s) imported successfully!\nBackup folder deleted.\nThe backup list has been updated.");
+            AddTranslationSafe("message.importAlreadyDone", "Import has already been completed.\nThe backup list is already updated.");
 
             // ===== AUTO RESTORE MODES - ENGLISH ONLY =====
             AddTranslationSafe("mode.disabled", "Disabled");
@@ -342,7 +233,6 @@ namespace BackupSave
             AddTranslationSafe("popup.successRestoreBackup", "Your backup has been successfully restored!");
             AddTranslationSafe("popup.successDeletePointMsg", "Restore point was successfully deleted!");
             AddTranslationSafe("popup.successDeleteBackupMsg", "Backup was successfully deleted!");
-            AddTranslationSafe("popup.deletedPrefix", "Backup was deleted.");
             AddTranslationSafe("popup.failDeletePointMsg", "Restore point was deleted.");
             AddTranslationSafe("popup.failDeleteBackupMsg", "Backup was deleted.");
             AddTranslationSafe("popup.successDeleteMeshsaveMsg", "Meshsave.txt file was successfully deleted!");
@@ -374,7 +264,7 @@ namespace BackupSave
             AddTranslationSafe("log.prefixEnabled", "[BackupSave] Character name prefix enabled: ");
 
             // ===== MISSING TEXTS - ENGLISH ONLY =====
-            AddTranslationSafe("text.reloadTip", "Restore or delete are applied immediately. Reload the game to update the save list.");
+            AddTranslationSafe("text.reloadTip", "Restore, create, or delete updates the list immediately.");
             AddTranslationSafe("text.restorePointPlaceholder", "Type the name here...");
             AddTranslationSafe("text.restorePointInfo", "Restore points are permanent and will not be deleted by backup limits.");
             AddTranslationSafe("text.meshsaveInfo", "Delete the meshsave.txt file to restore the vehicle format.");
@@ -382,7 +272,6 @@ namespace BackupSave
             AddTranslationSafe("button.createRestorePoint", "Create Restore Point");
             AddTranslationSafe("button.deleteMeshsave", "<color=red>Delete meshsave.txt</color>");
             AddTranslationSafe("button.importSave", "Import Save from My Summer Car");
-            AddTranslationSafe("button.importAllBackups", "Import All Backups");
 
             // ===== ERROR MESSAGES - ENGLISH ONLY =====
             AddTranslationSafe("popup.failRestorePoint", "Failed to restore the restore point");
@@ -402,6 +291,9 @@ namespace BackupSave
             AddTranslationSafe("popup.successImport", "Backup created successfully!\nSave from My Summer Car was imported to My Winter Car.");
             AddTranslationSafe("popup.successImportNoBackup", "Save from My Summer Car was imported to My Winter Car!\nWARNING: Failed to create backup of previous save.");
             AddTranslationSafe("popup.successImportNoSave", "Save from My Summer Car was imported to My Winter Car!\nWarning: No previous save to backup.");
+            AddTranslationSafe("popup.warningBackupFailed", "WARNING: Failed to create backup of previous save.");
+            AddTranslationSafe("popup.importPartial", "Some backups were imported, but a few failed.\nThe original folder was kept so you can try again.");
+            AddTranslationSafe("popup.importFailed", "Failed to import backups.\nThe original folder was kept so you can try again.");
 
             // ===== AUTO RESTORE MESSAGES - ENGLISH ONLY =====
             AddTranslationSafe("popup.deathMessage", "You died!");
@@ -427,9 +319,9 @@ namespace BackupSave
             // ===== IMPORT LOGS - ENGLISH ONLY =====
             AddTranslationSafe("log.externalBackupImported", "[BackupSave] External backup imported: ");
             AddTranslationSafe("log.externalBackupFolderDeleted", "[BackupSave] External backup folder successfully deleted.");
-            AddTranslationSafe("popup.importAlreadyDone", "Import has already been completed.\nClose and open the game to update the backup list.");
+            AddTranslationSafe("popup.importAlreadyDone", "Import has already been completed.\nThe backup list is already updated.");
             AddTranslationSafe("popup.importCompleted", "Total of ");
-            AddTranslationSafe("popup.importCompletedEnd", " backup(s) imported successfully!\nBackup folder deleted.\nClose and open the game for the backups to appear in the list.");
+            AddTranslationSafe("popup.importCompletedEnd", " backup(s) imported successfully!\nBackup folder deleted.\nThe backup list has been updated.");
             AddTranslationSafe("label.importedPrefix", "IMPORTED - ");
             
             // ===== RESTORE POINT LOGS - ENGLISH ONLY =====

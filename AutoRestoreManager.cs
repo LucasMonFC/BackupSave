@@ -272,23 +272,7 @@ namespace BackupSave
         /// </summary>
         private string GetLatestBackupName(string gameFolder)
         {
-            try
-            {
-                string backupPath = backupManager.GetBackupPath(gameFolder);
-                if (!Directory.Exists(backupPath))
-                    return "";
-
-                DirectoryInfo[] backups = new DirectoryInfo(backupPath).GetDirectories();
-                if (backups.Length == 0)
-                    return "";
-
-                System.Array.Sort(backups, (a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
-                return backups[0].Name;
-            }
-            catch
-            {
-                return "";
-            }
+            return backupManager != null ? backupManager.GetLatestBackupName(gameFolder) : "";
         }
 
         /// <summary>

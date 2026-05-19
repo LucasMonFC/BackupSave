@@ -40,6 +40,10 @@
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <Reference Include="Ionic.Zip.Reduced">
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\mywintercar_Data\Managed\Ionic.Zip.Reduced.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="UnityEngine">
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\mywintercar_Data\Managed\UnityEngine.dll</HintPath>
       <Private>False</Private>
@@ -62,11 +66,16 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>if "$(ConfigurationName)" == "Debug" (
-  copy "$(TargetPath)" "C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\Mods\BackupSave.dll" /y
-  copy "$(TargetDir)$(TargetName).pdb" "C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\Mods\BackupSave.pdb" /y
+    <PostBuildEvent>if not exist "C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\Mods" mkdir "C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\Mods"
+if not exist "C:\Program Files (x86)\Steam\steamapps\common\My Summer Car\Mods" mkdir "C:\Program Files (x86)\Steam\steamapps\common\My Summer Car\Mods"
+if "$(ConfigurationName)" == "Debug" (
+  copy "$(TargetPath)" "C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\Mods\BackupSave.dll" /y || echo [BackupSave] Aviso: nao foi possivel copiar para My Winter Car. Feche o jogo e compile novamente.
+  copy "$(TargetDir)$(TargetName).pdb" "C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\Mods\BackupSave.pdb" /y || echo [BackupSave] Aviso: nao foi possivel copiar o PDB para My Winter Car.
+  copy "$(TargetPath)" "C:\Program Files (x86)\Steam\steamapps\common\My Summer Car\Mods\BackupSave.dll" /y || echo [BackupSave] Aviso: nao foi possivel copiar para My Summer Car. Feche o jogo e compile novamente.
+  copy "$(TargetDir)$(TargetName).pdb" "C:\Program Files (x86)\Steam\steamapps\common\My Summer Car\Mods\BackupSave.pdb" /y || echo [BackupSave] Aviso: nao foi possivel copiar o PDB para My Summer Car.
 ) ELSE (
-  copy "$(TargetPath)" "C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\Mods\BackupSave.dll" /y
+  copy "$(TargetPath)" "C:\Program Files (x86)\Steam\steamapps\common\My Winter Car\Mods\BackupSave.dll" /y || echo [BackupSave] Aviso: nao foi possivel copiar para My Winter Car. Feche o jogo e compile novamente.
+  copy "$(TargetPath)" "C:\Program Files (x86)\Steam\steamapps\common\My Summer Car\Mods\BackupSave.dll" /y || echo [BackupSave] Aviso: nao foi possivel copiar para My Summer Car. Feche o jogo e compile novamente.
 )</PostBuildEvent>
   </PropertyGroup>
 </Project>

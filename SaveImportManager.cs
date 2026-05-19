@@ -48,7 +48,7 @@ namespace BackupSave
                 {
                     string sourceFile = Path.Combine(sourcePath, fileName);
                     if (File.Exists(sourceFile))
-                        File.Copy(sourceFile, Path.Combine(destPath, fileName));
+                        File.Copy(sourceFile, Path.Combine(destPath, fileName), true);
                 }
             }
         }
@@ -108,7 +108,7 @@ namespace BackupSave
                         : "Backup criado com sucesso!\nSave do My Summer Car foi importado para My Winter Car.";
                     
                     if (!backupCreated)
-                        message += "\n\n" + localizationManager.GetString("popup", "warningBackupFailed", "AVISO: Falha ao criar backup do save anterior.");
+                        message += "\n\n" + (localizationManager != null ? localizationManager.GetString("popup", "warningBackupFailed", "AVISO: Falha ao criar backup do save anterior.") : "AVISO: Falha ao criar backup do save anterior.");
                 }
                 else
                 {
@@ -213,7 +213,7 @@ namespace BackupSave
             
             if (!Directory.Exists(externalBackupRootPath))
             {
-                string alreadyMsg = localizationManager != null ? localizationManager.GetString("popup", "importAlreadyDone", "A importação já foi concluída.\nFeche e abra o jogo para atualizar a lista de backups.") : "A importação já foi concluída.\nFeche e abra o jogo para atualizar a lista de backups.";
+                string alreadyMsg = localizationManager != null ? localizationManager.GetString("popup", "importAlreadyDone", "A importação já foi concluída.\nA lista de backups já está atualizada.") : "A importação já foi concluída.\nA lista de backups já está atualizada.";
                 string titleAlreadyDone = localizationManager != null ? localizationManager.GetString("popup", "titleImportAlreadyDone", "IMPORTAÇÃO JÁ REALIZADA") : "IMPORTAÇÃO JÁ REALIZADA";
                 ModUI.ShowMessage(alreadyMsg, titleAlreadyDone);
                 return 0;
@@ -222,41 +222,60 @@ namespace BackupSave
             string[] backups = GetExternalBackupList();
             if (backups.Length == 0)
             {
-                string alreadyMsg = localizationManager != null ? localizationManager.GetString("popup", "importAlreadyDone", "A importação já foi concluída.\nFeche e abra o jogo para atualizar a lista de backups.") : "A importação já foi concluída.\nFeche e abra o jogo para atualizar a lista de backups.";
+                string alreadyMsg = localizationManager != null ? localizationManager.GetString("popup", "importAlreadyDone", "A importação já foi concluída.\nA lista de backups já está atualizada.") : "A importação já foi concluída.\nA lista de backups já está atualizada.";
                 string titleAlreadyDone = localizationManager != null ? localizationManager.GetString("popup", "titleImportAlreadyDone", "IMPORTAÇÃO JÁ REALIZADA") : "IMPORTAÇÃO JÁ REALIZADA";
                 ModUI.ShowMessage(alreadyMsg, titleAlreadyDone);
                 return 0;
             }
             
             int importedCount = 0;
+            bool allImported = true;
             foreach (string backupName in backups)
             {
                 string externalBackupPath = Path.Combine(externalBackupRootPath, backupName);
                 string importedPrefix = localizationManager != null ? localizationManager.GetImportedPrefix() : "IMPORTADO - ";
                 string importedName = importedPrefix + backupName;
                 
-                // Usar BackupManager para criar o backup importado
-                backupManager.ImportExternalBackupPath(externalBackupPath, importedName, backupLimit);
-                importedCount++;
-                
-                string importedMsg = localizationManager != null ? localizationManager.GetString("log", "externalBackupImported", "[BackupSave] Backup externo importado: ") : "[BackupSave] Backup externo importado: ";
-                ModConsole.Log("<color=#00ff00>" + importedMsg + importedName + "</color>");
+                if (backupManager.ImportExternalBackupPath(externalBackupPath, importedName, backupLimit, false))
+                {
+                    importedCount++;
+                    string importedMsg = localizationManager != null ? localizationManager.GetString("log", "externalBackupImported", "[BackupSave] Backup externo importado: ") : "[BackupSave] Backup externo importado: ";
+                    ModConsole.Log("<color=#00ff00>" + importedMsg + importedName + "</color>");
+                }
+                else
+                {
+                    allImported = false;
+                    string errorMsg = localizationManager != null ? localizationManager.GetString("log", "errorCreatingBackup", "[BackupSave] Erro ao criar backup") : "[BackupSave] Erro ao criar backup";
+                    ModConsole.Error(errorMsg + ": " + importedName);
+                }
             }
             
             // Aplicar limite de backups após importar todos
             backupManager.ManageBackupLimit("My Summer Car", backupLimit);
             
             // Deletar pasta Backup externa após importação bem-sucedida
-            if (importedCount > 0)
+            if (importedCount > 0 && allImported)
             {
                 Directory.Delete(externalBackupRootPath, true);
                 string folderDeletedMsg = localizationManager != null ? localizationManager.GetString("log", "externalBackupFolderDeleted", "[BackupSave] Pasta de backup externo deletada com sucesso.") : "[BackupSave] Pasta de backup externo deletada com sucesso.";
                 ModConsole.Log("<color=#00ff00>" + folderDeletedMsg + "</color>");
                 
                 // Pop-up informando importação concluída
-                string completedMsg = (localizationManager != null ? localizationManager.GetString("popup", "importCompleted", "Total de ") : "Total de ") + importedCount + (localizationManager != null ? localizationManager.GetString("popup", "importCompletedEnd", " backup(s) importado(s) com sucesso!\nPasta de backup excluída.\nFeche e abra o jogo para que os backups apareçam na lista.") : " backup(s) importado(s) com sucesso!\nPasta de backup excluída.\nFeche e abra o jogo para que os backups apareçam na lista.");
+                string completedMsg = (localizationManager != null ? localizationManager.GetString("popup", "importCompleted", "Total de ") : "Total de ") + importedCount + (localizationManager != null ? localizationManager.GetString("popup", "importCompletedEnd", " backup(s) importado(s) com sucesso!\nPasta de backup excluída.\nA lista de backups foi atualizada.") : " backup(s) importado(s) com sucesso!\nPasta de backup excluída.\nA lista de backups foi atualizada.");
                 string titleCompleted = localizationManager != null ? localizationManager.GetString("popup", "titleImportCompleted", "IMPORTAÇÃO CONCLUÍDA") : "IMPORTAÇÃO CONCLUÍDA";
                 ModUI.ShowMessage(completedMsg, titleCompleted);
+            }
+            else if (importedCount > 0)
+            {
+                string partialMsg = localizationManager != null ? localizationManager.GetString("popup", "importPartial", "Alguns backups foram importados, mas houve falhas.\nA pasta original foi mantida para você tentar novamente.") : "Alguns backups foram importados, mas houve falhas.\nA pasta original foi mantida para você tentar novamente.";
+                string titleWarning = localizationManager != null ? localizationManager.GetString("popup", "titleWarning", "AVISO") : "AVISO";
+                ModUI.ShowMessage(partialMsg, titleWarning);
+            }
+            else if (!allImported)
+            {
+                string failMsg = localizationManager != null ? localizationManager.GetString("popup", "importFailed", "Falha ao importar os backups.\nA pasta original foi mantida para você tentar novamente.") : "Falha ao importar os backups.\nA pasta original foi mantida para você tentar novamente.";
+                string titleFailure = localizationManager != null ? localizationManager.GetString("popup", "titleFailure", "FALHA") : "FALHA";
+                ModUI.ShowMessage(failMsg, titleFailure);
             }
             
             return importedCount;

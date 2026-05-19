@@ -2,12 +2,14 @@ using MSCLoader;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Ionic.Zip;
 
 namespace BackupSave
 {
     public class BackupManager
     {
         private const string GRAVEYARD_FILE = "graveyard.txt";
+        private const string ZIP_EXTENSION = ".zip";
         private const string LOG_PREFIX = "[BackupSave] ";
         private string mscSavesPath;
         private LocalizationManager localizationManager;
@@ -78,14 +80,18 @@ namespace BackupSave
 
         private void CopyFilesInDirectory(string sourceDir, string destDir, bool skipGraveyard = false)
         {
-            foreach (string file in Directory.GetFiles(sourceDir))
+            foreach (string file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
             {
                 try
                 {
                     string fileName = Path.GetFileName(file);
                     if (skipGraveyard && fileName.ToLower() == GRAVEYARD_FILE)
                         continue;
-                    string destFile = Path.Combine(destDir, fileName);
+                    string relativePath = GetRelativePath(sourceDir, file);
+                    string destFile = Path.Combine(destDir, relativePath);
+                    string destParent = Path.GetDirectoryName(destFile);
+                    if (!Directory.Exists(destParent))
+                        Directory.CreateDirectory(destParent);
                     if (File.Exists(destFile)) File.Delete(destFile);
                     File.Copy(file, destFile);
                 }
@@ -96,11 +102,103 @@ namespace BackupSave
             }
         }
 
+        private string GetRelativePath(string basePath, string fullPath)
+        {
+            string normalizedBase = Path.GetFullPath(basePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            string normalizedFull = Path.GetFullPath(fullPath);
+            return normalizedFull.StartsWith(normalizedBase, StringComparison.OrdinalIgnoreCase)
+                ? normalizedFull.Substring(normalizedBase.Length)
+                : Path.GetFileName(fullPath);
+        }
+
+        private string GetZipPath(string itemPath)
+        {
+            return itemPath.EndsWith(ZIP_EXTENSION, StringComparison.OrdinalIgnoreCase) ? itemPath : itemPath + ZIP_EXTENSION;
+        }
+
+        private string GetItemNameWithoutZip(string name)
+        {
+            return name.EndsWith(ZIP_EXTENSION, StringComparison.OrdinalIgnoreCase) ? Path.GetFileNameWithoutExtension(name) : name;
+        }
+
+        private bool BackupItemExists(string itemPath)
+        {
+            return Directory.Exists(itemPath) || File.Exists(GetZipPath(itemPath));
+        }
+
+        private string ResolveBackupItemPath(string itemPath)
+        {
+            string zipPath = GetZipPath(itemPath);
+            if (Directory.Exists(itemPath) && File.Exists(zipPath))
+            {
+                DirectoryInfo directory = new DirectoryInfo(itemPath);
+                FileInfo zipFile = new FileInfo(zipPath);
+                return zipFile.LastWriteTime > directory.LastWriteTime ? zipPath : itemPath;
+            }
+
+            if (Directory.Exists(itemPath)) return itemPath;
+            return File.Exists(zipPath) ? zipPath : itemPath;
+        }
+
+        private void CreateZipFromSaveFiles(string sourceDir, string zipPath)
+        {
+            string parent = Path.GetDirectoryName(zipPath);
+            if (!Directory.Exists(parent))
+                Directory.CreateDirectory(parent);
+
+            if (File.Exists(zipPath))
+                File.Delete(zipPath);
+
+            using (ZipFile zip = new ZipFile())
+            {
+                foreach (string file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
+                {
+                    zip.AddFile(file, Path.GetDirectoryName(GetRelativePath(sourceDir, file)) ?? "");
+                }
+
+                zip.Save(zipPath);
+            }
+        }
+
+        private void ExtractZipToDirectory(string zipPath, string destDir, bool skipGraveyard = false)
+        {
+            using (ZipFile zip = ZipFile.Read(zipPath))
+            {
+                foreach (ZipEntry entry in zip)
+                {
+                    if (entry.IsDirectory)
+                        continue;
+
+                    string entryName = entry.FileName.Replace('/', Path.DirectorySeparatorChar);
+                    string fileName = Path.GetFileName(entryName);
+                    if (string.IsNullOrEmpty(fileName) || entryName.Contains("..") || Path.IsPathRooted(entryName))
+                        continue;
+
+                    if (skipGraveyard && fileName.ToLower() == GRAVEYARD_FILE)
+                        continue;
+
+                    entry.FileName = entryName;
+                    entry.Extract(destDir, ExtractExistingFileAction.OverwriteSilently);
+                }
+            }
+        }
+
+        private void CopyOrExtractBackupItem(string itemPath, string destDir, bool skipGraveyard = false)
+        {
+            if (Directory.Exists(itemPath))
+            {
+                CopyFilesInDirectory(itemPath, destDir, skipGraveyard);
+                return;
+            }
+
+            ExtractZipToDirectory(itemPath, destDir, skipGraveyard);
+        }
+
         private void DeleteSaveFiles(string savePath, bool preserveGraveyard = false)
         {
             try
             {
-                foreach (string file in Directory.GetFiles(savePath))
+                foreach (string file in Directory.GetFiles(savePath, "*", SearchOption.AllDirectories))
                 {
                     try
                     {
@@ -111,12 +209,31 @@ namespace BackupSave
                     }
                     catch { }
                 }
+
+                string[] directories = Directory.GetDirectories(savePath, "*", SearchOption.AllDirectories);
+                System.Array.Sort(directories, (a, b) => b.Length.CompareTo(a.Length));
+                foreach (string directory in directories)
+                {
+                    try
+                    {
+                        if (Directory.Exists(directory) && Directory.GetFileSystemEntries(directory).Length == 0)
+                            Directory.Delete(directory, true);
+                    }
+                    catch { }
+                }
             }
             catch { }
         }
 
         public bool DoBackup(string gameFolder, string customBackupName, int backupLimit = 50, string characterFirstName = "")
         {
+            if (!ValidateSaveFiles(gameFolder))
+            {
+                string errorMsg = localizationManager != null ? localizationManager.GetString("log", "errorNoValidSave", "[BackupSave] Error creating backup: No valid save file found!") : "[BackupSave] Error creating backup: No valid save file found!";
+                ModConsole.Log("<color=#ffaa00>" + errorMsg + "</color>");
+                return false;
+            }
+
             string timestamp = DateTime.Now.ToString("dd.MM.yyyy HH-mm-ss");
             string prefix = string.IsNullOrEmpty(characterFirstName) ? "" : characterFirstName + " - ";
             string backupFolderName = prefix + (string.IsNullOrEmpty(customBackupName) ? timestamp : customBackupName + " - " + timestamp);
@@ -140,8 +257,10 @@ namespace BackupSave
         {
             try
             {
-                Directory.CreateDirectory(folderPath);
-                CopyFilesInDirectory(GetSavePath(gameFolder), folderPath);
+                if (Directory.Exists(folderPath))
+                    Directory.Delete(folderPath, true);
+
+                CreateZipFromSaveFiles(GetSavePath(gameFolder), GetZipPath(folderPath));
                 string typeLog = isRestorePoint ? "[BackupSave] Ponto de restauração criado com sucesso - Nome: " : "[BackupSave] Backup criado com sucesso - Nome: ";
                 if (localizationManager != null)
                     typeLog = isRestorePoint ? localizationManager.GetString("log", "restorePointCreated", "[BackupSave] Ponto de restauração criado com sucesso - Nome: ") : localizationManager.GetString("log", "backupCreated", "[BackupSave] Backup criado com sucesso - Nome: ");
@@ -165,22 +284,26 @@ namespace BackupSave
             if (backupLimit <= 0) return;
             DirectoryInfo backupDir = new DirectoryInfo(GetBackupPath(gameFolder));
             if (!backupDir.Exists) return;
-            DirectoryInfo[] backups = backupDir.GetDirectories();
-            if (backups.Length <= backupLimit) return;
-            List<DirectoryInfo> list = new List<DirectoryInfo>(backups);
+            List<FileSystemInfo> list = GetBackupItems(GetBackupPath(gameFolder), true);
+            if (list.Count <= backupLimit) return;
             list.Sort((a, b) => a.CreationTime.CompareTo(b.CreationTime));
             for (int i = 0; i < list.Count - backupLimit; i++)
             {
                 try
                 {
-                    list[i].Delete(true);
+                    DirectoryInfo directory = list[i] as DirectoryInfo;
+                    if (directory != null)
+                        directory.Delete(true);
+                    else
+                        list[i].Delete();
+
                     string deletedMsg = localizationManager != null ? localizationManager.GetString("log", "oldBackupDeleted", "[BackupSave] Backup antigo deletado: ") : "[BackupSave] Backup antigo deletado: ";
-                    ModConsole.Log("<color=#ffaa00>" + deletedMsg + list[i].Name + "</color>");
+                    ModConsole.Log("<color=#ffaa00>" + deletedMsg + GetItemNameWithoutZip(list[i].Name) + "</color>");
                 }
                 catch
                 {
                     string errorMsg = localizationManager != null ? localizationManager.GetString("log", "errorDeletingOldBackup", "[BackupSave] Erro ao deletar backup antigo: ") : "[BackupSave] Erro ao deletar backup antigo: ";
-                    ModConsole.Error(errorMsg + list[i].Name);
+                    ModConsole.Error(errorMsg + GetItemNameWithoutZip(list[i].Name));
                 }
             }
             string limitMsg = localizationManager != null ? localizationManager.GetString("log", "backupLimitApplied", "[BackupSave] Limite de backup aplicado. Mantendo apenas os ") : "[BackupSave] Limite de backup aplicado. Mantendo apenas os ";
@@ -191,16 +314,17 @@ namespace BackupSave
         {
             DirectoryInfo backupDir = new DirectoryInfo(GetBackupPath(gameFolder));
             if (!backupDir.Exists) return false;
-            DirectoryInfo[] backups = backupDir.GetDirectories();
-            if (backups.Length == 0) return false;
-            System.Array.Sort(backups, (a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
-            return RestoreBackup(GetSavePath(gameFolder), backups[0].FullName, backups[0].Name, preserveGraveyard);
+            List<FileSystemInfo> backups = GetBackupItems(GetBackupPath(gameFolder), true);
+            if (backups.Count == 0) return false;
+            backups.Sort((a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
+            return RestoreBackup(GetSavePath(gameFolder), backups[0].FullName, GetItemNameWithoutZip(backups[0].Name), preserveGraveyard);
         }
 
         public bool RestoreBackupByName(string gameFolder, string backupName)
         {
             string backupPath = GetBackupPath(gameFolder, backupName);
-            return Directory.Exists(backupPath) ? RestoreBackup(GetSavePath(gameFolder), backupPath, backupName, false) : false;
+            string resolvedPath = ResolveBackupItemPath(backupPath);
+            return BackupItemExists(backupPath) ? RestoreBackup(GetSavePath(gameFolder), resolvedPath, backupName, false) : false;
         }
 
         private bool RestoreBackup(string savePath, string backupPath, string backupName, bool preserveGraveyard)
@@ -208,7 +332,7 @@ namespace BackupSave
             try
             {
                 DeleteSaveFiles(savePath, preserveGraveyard);
-                CopyFilesInDirectory(backupPath, savePath, preserveGraveyard);
+                CopyOrExtractBackupItem(backupPath, savePath, preserveGraveyard);
                 string restoreMsg = localizationManager != null ? localizationManager.GetString("log", "backupRestored", "[BackupSave] Backup restaurado com sucesso: ") : "[BackupSave] Backup restaurado com sucesso: ";
                 ModConsole.Log("<color=#00ff00>" + restoreMsg + backupName + "</color>");
                 return true;
@@ -225,8 +349,14 @@ namespace BackupSave
         {
             try
             {
-                if (!Directory.Exists(itemPath)) return false;
-                Directory.Delete(itemPath, true);
+                string resolvedPath = ResolveBackupItemPath(itemPath);
+                if (Directory.Exists(resolvedPath))
+                    Directory.Delete(resolvedPath, true);
+                else if (File.Exists(resolvedPath))
+                    File.Delete(resolvedPath);
+                else
+                    return false;
+
                 string deleteMsg = localizationManager != null ? localizationManager.GetString("log", "backupDeleted", "[BackupSave] Backup deletado: ") : "[BackupSave] Backup deletado: ";
                 ModConsole.Log("<color=#ffaa00>" + deleteMsg + itemName + "</color>");
                 return true;
@@ -245,7 +375,8 @@ namespace BackupSave
         public bool RestoreRestorePointByName(string gameFolder, string restorePointName)
         {
             string rpPath = GetRestorePointPath(gameFolder, restorePointName);
-            return Directory.Exists(rpPath) ? RestoreBackup(GetSavePath(gameFolder), rpPath, restorePointName, false) : false;
+            string resolvedPath = ResolveBackupItemPath(rpPath);
+            return BackupItemExists(rpPath) ? RestoreBackup(GetSavePath(gameFolder), resolvedPath, restorePointName, false) : false;
         }
 
         public bool DeleteRestorePointByName(string gameFolder, string restorePointName) => DeleteBackupOrRestorePoint(GetRestorePointPath(gameFolder, restorePointName), restorePointName, "Ponto de Restauração");
@@ -268,19 +399,57 @@ namespace BackupSave
             }
         }
 
+        private List<FileSystemInfo> GetBackupItems(string dirPath, bool includeZipFiles)
+        {
+            List<FileSystemInfo> items = new List<FileSystemInfo>();
+            if (!Directory.Exists(dirPath)) return items;
+
+            DirectoryInfo directory = new DirectoryInfo(dirPath);
+            Dictionary<string, FileSystemInfo> uniqueItems = new Dictionary<string, FileSystemInfo>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (DirectoryInfo item in directory.GetDirectories())
+                uniqueItems[GetItemNameWithoutZip(item.Name)] = item;
+
+            if (includeZipFiles)
+            {
+                foreach (FileInfo item in directory.GetFiles("*" + ZIP_EXTENSION))
+                {
+                    string key = GetItemNameWithoutZip(item.Name);
+                    if (!uniqueItems.ContainsKey(key) || item.LastWriteTime > uniqueItems[key].LastWriteTime)
+                        uniqueItems[key] = item;
+                }
+            }
+
+            foreach (FileSystemInfo item in uniqueItems.Values)
+                items.Add(item);
+
+            return items;
+        }
+
         private string[] GetDirectoryList(string dirPath)
         {
             try
             {
-                if (!Directory.Exists(dirPath)) return new string[] { };
-                DirectoryInfo[] dirs = new DirectoryInfo(dirPath).GetDirectories();
-                if (dirs.Length == 0) return new string[] { };
-                System.Array.Sort(dirs, (a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
+                List<FileSystemInfo> items = GetBackupItems(dirPath, true);
+                if (items.Count == 0) return new string[] { };
+                items.Sort((a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
                 List<string> names = new List<string>();
-                foreach (var dir in dirs) names.Add(dir.Name);
+                foreach (FileSystemInfo item in items) names.Add(GetItemNameWithoutZip(item.Name));
                 return names.ToArray();
             }
             catch { return new string[] { }; }
+        }
+
+        public string GetLatestBackupName(string gameFolder)
+        {
+            try
+            {
+                List<FileSystemInfo> backups = GetBackupItems(GetBackupPath(gameFolder), true);
+                if (backups.Count == 0) return "";
+                backups.Sort((a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
+                return GetItemNameWithoutZip(backups[0].Name);
+            }
+            catch { return ""; }
         }
 
         /// <summary>
@@ -311,35 +480,105 @@ namespace BackupSave
             {
                 string filePath = Path.Combine(GetSavePath(gameFolder), gameFolder == "My Summer Car" ? "defaultES2File.txt" : "savefile.txt");
                 if (!File.Exists(filePath)) return "";
-                string content = TryDecodeFile(File.ReadAllBytes(filePath));
+                byte[] bytes = File.ReadAllBytes(filePath);
+                string firstName = ExtractES2StringValue(bytes, "PlayerFirstName");
+                if (!string.IsNullOrEmpty(firstName)) return firstName;
+
+                string content = TryDecodeFile(bytes);
                 int index = content.IndexOf("PlayerFirstName", System.StringComparison.OrdinalIgnoreCase);
                 if (index == -1) return "";
                 index += "PlayerFirstName".Length;
-                while (index < content.Length && !char.IsLetter(content[index])) index++;
+                while (index < content.Length && !IsPlainNameStartChar(content[index])) index++;
                 if (index >= content.Length) return "";
                 int end = index;
-                while (end < content.Length && (char.IsLetter(content[end]) || content[end] == ' ' || content[end] == '-' || content[end] == '\'')) end++;
-                string firstName = System.Text.RegularExpressions.Regex.Replace(content.Substring(index, end - index).Trim(), "\\s+", " ").Trim();
+                while (end < content.Length && IsNameChar(content[end])) end++;
+                firstName = CleanCharacterFirstName(content.Substring(index, end - index));
                 return firstName.Length > 1 ? firstName : "";
             }
             catch (Exception ex) { ModConsole.Error(LOG_PREFIX + "Erro ao extrair nome: " + ex.Message); return ""; }
         }
 
-        private string TryDecodeFile(byte[] bytes)
+        private string ExtractES2StringValue(byte[] bytes, string key)
         {
-            try { return System.Text.Encoding.UTF8.GetString(bytes); }
-            catch { try { return System.Text.Encoding.ASCII.GetString(bytes); } catch { return System.Text.Encoding.GetEncoding("ISO-8859-1").GetString(bytes); } }
+            byte[] keyBytes = System.Text.Encoding.ASCII.GetBytes(key);
+            byte[] stringMarker = new byte[] { 0xFF, 0xEE, 0xF1, 0xE9, 0xFD };
+            int keyIndex = IndexOfBytes(bytes, keyBytes, 0, bytes.Length);
+            if (keyIndex < 0) return "";
+
+            int searchStart = keyIndex + keyBytes.Length;
+            int searchEnd = Math.Min(bytes.Length, searchStart + 64);
+            int markerIndex = IndexOfBytes(bytes, stringMarker, searchStart, searchEnd);
+            if (markerIndex < 0) return "";
+
+            int lengthIndex = markerIndex + stringMarker.Length;
+            if (lengthIndex >= bytes.Length) return "";
+
+            int stringLength = bytes[lengthIndex];
+            int valueStart = lengthIndex + 1;
+            if (stringLength <= 0 || valueStart + stringLength > bytes.Length)
+                return "";
+
+            string value = DecodeStringBytes(bytes, valueStart, stringLength);
+            return CleanCharacterFirstName(value);
         }
 
-        public bool ImportExternalBackupPath(string externalBackupPath, string importedName, int backupLimit)
+        private int IndexOfBytes(byte[] bytes, byte[] pattern, int startIndex, int endIndex)
+        {
+            int lastStart = Math.Min(endIndex, bytes.Length) - pattern.Length;
+            for (int i = Math.Max(0, startIndex); i <= lastStart; i++)
+            {
+                bool matched = true;
+                for (int j = 0; j < pattern.Length; j++)
+                {
+                    if (bytes[i + j] != pattern[j])
+                    {
+                        matched = false;
+                        break;
+                    }
+                }
+                if (matched) return i;
+            }
+            return -1;
+        }
+
+        private string DecodeStringBytes(byte[] bytes, int index, int count)
+        {
+            try { return new System.Text.UTF8Encoding(false, true).GetString(bytes, index, count); }
+            catch { return System.Text.Encoding.Default.GetString(bytes, index, count); }
+        }
+
+        private string CleanCharacterFirstName(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+            string cleaned = System.Text.RegularExpressions.Regex.Replace(value.Trim(), "\\s+", " ").Trim();
+            return cleaned.Length > 1 ? cleaned : "";
+        }
+
+        private bool IsPlainNameStartChar(char value)
+        {
+            return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z');
+        }
+
+        private bool IsNameChar(char value)
+        {
+            return IsPlainNameStartChar(value) || value == ' ' || value == '-' || value == '\'';
+        }
+
+        private string TryDecodeFile(byte[] bytes)
+        {
+            try { return new System.Text.UTF8Encoding(false, true).GetString(bytes); }
+            catch { try { return System.Text.Encoding.GetEncoding("ISO-8859-1").GetString(bytes); } catch { return System.Text.Encoding.ASCII.GetString(bytes); } }
+        }
+
+        public bool ImportExternalBackupPath(string externalBackupPath, string importedName, int backupLimit, bool manageLimit = true)
         {
             try
             {
                 if (!Directory.Exists(externalBackupPath)) return false;
                 string backupPath = GetBackupPath("My Summer Car", importedName);
-                Directory.CreateDirectory(backupPath);
-                CopyFilesInDirectory(externalBackupPath, backupPath);
-                ManageBackupLimit("My Summer Car", backupLimit);
+                CreateZipFromSaveFiles(externalBackupPath, GetZipPath(backupPath));
+                if (manageLimit)
+                    ManageBackupLimit("My Summer Car", backupLimit);
                 return true;
             }
             catch (Exception ex) { ModConsole.Error(LOG_PREFIX + "Erro ao importar backup externo\n" + ex.Message); return false; }
