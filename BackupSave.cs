@@ -12,6 +12,7 @@ namespace BackupSave
     {
         private const string LOG_PREFIX = "[BackupSave] ";
         private const string NO_BACKUPS_COLOR = "#ffaa00";
+        private const float MENU_LOCALIZATION_REAPPLY_DELAY = 0.05f;
         public override string ID => "BackupSave";
         public override string Name => "BackupSave";
         public override string Author => "LucasMonOficial";
@@ -51,6 +52,8 @@ namespace BackupSave
         private Dictionary<string, string[]> backupLists = new Dictionary<string, string[]>();
         private bool listsLoaded = false;
         private bool autoMeshsaveDeleteAttemptedInMenu = false;
+        private bool menuLocalizationReapplyPending = false;
+        private float menuLocalizationReapplyAt = 0f;
         
         // Performance cache (OTIMIZAÇÃO)
         private string[] backupLimitValuesCache = null;
@@ -451,7 +454,92 @@ namespace BackupSave
         {
             string restartingMessage = LocalizationManager.Text("[BackupSave] Restarting menu", "[BackupSave] Reiniciando o menu");
             ModConsole.Log(localizationManager.GetString("log", "restartingMenu", restartingMessage));
+            ScheduleMenuLocalizationReapply();
             UnityEngine.Application.LoadLevel(1);
+        }
+
+        private void ScheduleMenuLocalizationReapply()
+        {
+            if (!LocalizationManager.IsBrazilianLocalizationInstalled())
+                return;
+
+            menuLocalizationReapplyPending = true;
+            menuLocalizationReapplyAt = UnityEngine.Time.realtimeSinceStartup + MENU_LOCALIZATION_REAPPLY_DELAY;
+        }
+
+        private void ProcessMenuLocalizationReapply()
+        {
+            if (!menuLocalizationReapplyPending)
+                return;
+            if (UnityEngine.Application.loadedLevel != 1)
+                return;
+            if (UnityEngine.Time.realtimeSinceStartup < menuLocalizationReapplyAt)
+                return;
+
+            menuLocalizationReapplyPending = false;
+            if (TryReapplyExternalLocalization())
+                return;
+        }
+
+        private bool TryReapplyExternalLocalization()
+        {
+            try
+            {
+                Mod localizationMod = GetLoadedModById(LocalizationManager.GetBrazilianLocalizationModId());
+                if (localizationMod == null)
+                    return false;
+
+                bool reapplied = false;
+                if (TryInvokeModCallback(localizationMod, "A_OnMenuLoad"))
+                    reapplied = true;
+                else if (TryInvokeNoArgsMethod(localizationMod, "Mod_OnMenuLoad"))
+                    reapplied = true;
+
+                if (TryInvokeNoArgsMethod(localizationMod, "ReloadTranslations"))
+                    reapplied = true;
+
+                return reapplied;
+            }
+            catch (Exception)
+            {
+                menuLocalizationReapplyPending = false;
+                return true;
+            }
+        }
+
+        private Mod GetLoadedModById(string modId)
+        {
+            if (string.IsNullOrEmpty(modId) || ModLoader.LoadedMods == null)
+                return null;
+
+            foreach (Mod mod in ModLoader.LoadedMods)
+            {
+                if (mod != null && string.Equals(mod.ID, modId, StringComparison.OrdinalIgnoreCase))
+                    return mod;
+            }
+
+            return null;
+        }
+
+        private bool TryInvokeModCallback(Mod mod, string callbackFieldName)
+        {
+            FieldInfo callbackField = typeof(Mod).GetField(callbackFieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            Action callback = callbackField != null ? callbackField.GetValue(mod) as Action : null;
+            if (callback == null)
+                return false;
+
+            callback();
+            return true;
+        }
+
+        private bool TryInvokeNoArgsMethod(Mod mod, string methodName)
+        {
+            MethodInfo method = mod.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (method == null || method.GetParameters().Length != 0)
+                return false;
+
+            method.Invoke(mod, null);
+            return true;
         }
 
         private void OnShowModInfoClick()
@@ -549,6 +637,8 @@ namespace BackupSave
 
         private void ModUpdate()
         {
+            ProcessMenuLocalizationReapply();
+
             string gameFolder = GetGameSaveFolder();
             int currentMode = GetAutoRestoreMode();
             if (lastAutoRestoreMode >= 0 && currentMode != lastAutoRestoreMode)

@@ -41,7 +41,7 @@ namespace BackupSave
             return Text("IMPORTED - ", "IMPORTADO - ");
         }
 
-        private static bool IsBrazilianLocalizationInstalled()
+        public static bool IsBrazilianLocalizationInstalled()
         {
             try
             {
@@ -53,7 +53,7 @@ namespace BackupSave
             }
         }
 
-        private static string GetBrazilianLocalizationModId()
+        public static string GetBrazilianLocalizationModId()
         {
             return ModLoader.CurrentGame == Game.MySummerCar
                 ? SummerBrazilianLocalizationModId
