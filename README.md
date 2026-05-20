@@ -17,6 +17,16 @@ Mod de backup automático para My Summer Car e My Winter Car com restauração i
 2. Copie para `Mods/` do jogo
 3. Pronto!
 
+## Localização
+
+O mod usa inglês por padrão e muda automaticamente para pt-BR quando encontra o
+mod de localização correspondente ao jogo carregado:
+
+- My Summer Car: `MSC_Localization_Core_BR`
+- My Winter Car: `MWC_Localization_Core_BR`
+
+A localização cobre textos de configuração, pop-ups e logs do mod.
+
 ## Configuração
 
 No menu MSCLoader do jogo:
@@ -34,4 +44,4 @@ Salvos em: `C:\Users\{user}\AppData\LocalLow\Amistech\BackupSave\`
 
 ---
 
-**Versão**: 1.0.0 | **Baseado em**: SaveBackuper por AnimeForevere
+**Versão**: 1.0.1 | **Baseado em**: SaveBackuper por AnimeForevere

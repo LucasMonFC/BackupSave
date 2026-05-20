@@ -66,12 +66,16 @@ namespace BackupSave
 
                 if (!HasKeyFile(mscSavePath))
                 {
-                    string errorMsg = localizationManager != null 
-                        ? localizationManager.GetString("popup", "importSaveNotFound", "Error: No save found in My Summer Car!")
-                        : "Erro: Nenhum save encontrado no My Summer Car!";
-                    string errorTitle = localizationManager != null
-                        ? localizationManager.GetString("popup", "titleFailure", "FALHA")
-                        : "FALHA";
+                    string errorMsg = LocalizationManager.Text("Error: No save found in My Summer Car!", "Erro: Nenhum save encontrado em My Summer Car!");
+                    if (localizationManager != null)
+                    {
+                        errorMsg = localizationManager.GetString("popup", "importSaveNotFound", errorMsg);
+                    }
+                    string errorTitle = LocalizationManager.Text("FAILURE", "FALHA");
+                    if (localizationManager != null)
+                    {
+                        errorTitle = localizationManager.GetString("popup", "titleFailure", errorTitle);
+                    }
                     ModUI.ShowMessage(errorMsg, errorTitle);
                     return;
                 }
@@ -81,9 +85,11 @@ namespace BackupSave
                 
                 if (mwcHasValidSave)
                 {
-                    string creatingMsg = localizationManager != null
-                        ? localizationManager.GetString("log", "creatingMWCBackup", "[BackupSave] Creating backup of current My Winter Car save...")
-                        : "[BackupSave] Criando backup do save atual do My Winter Car...";
+                    string creatingMsg = LocalizationManager.Text("[BackupSave] Creating backup of current My Winter Car save...", "[BackupSave] Criando backup do save atual do My Winter Car...");
+                    if (localizationManager != null)
+                    {
+                        creatingMsg = localizationManager.GetString("log", "creatingMWCBackup", creatingMsg);
+                    }
                     ModConsole.Log("<color=#ffffff>" + creatingMsg + "</color>");
                     backupCreated = backupManager.DoBackup("My Winter Car", customBackupName, backupLimit);
                 }
@@ -94,40 +100,62 @@ namespace BackupSave
                 ManageSaveFiles(mscSavePath, mwcSavePath, true);  // Delete
                 ManageSaveFiles(mscSavePath, mwcSavePath);        // Copy
 
-                string importedMsg = localizationManager != null
-                    ? localizationManager.GetString("log", "saveImported", "[BackupSave] Save importado com sucesso do My Summer Car para My Winter Car!")
-                    : "[BackupSave] Save importado com sucesso do My Summer Car para My Winter Car!";
+                string importedMsg = LocalizationManager.Text("[BackupSave] Save successfully imported from My Summer Car to My Winter Car!", "[BackupSave] Save importado com sucesso do My Summer Car para My Winter Car!");
+                if (localizationManager != null)
+                {
+                    importedMsg = localizationManager.GetString("log", "saveImported", importedMsg);
+                }
                 ModConsole.Log("<color=#00ff00>" + importedMsg + "</color>");
                 
                 string message = "";
                 
                 if (mwcHasValidSave)
                 {
-                    message = localizationManager != null
-                        ? localizationManager.GetString("popup", "successImport", "Backup criado com sucesso!\nSave do My Summer Car foi importado para My Winter Car.")
-                        : "Backup criado com sucesso!\nSave do My Summer Car foi importado para My Winter Car.";
+                    message = LocalizationManager.Text("Backup created successfully!\nSave from My Summer Car was imported to My Winter Car.", "Backup criado com sucesso!\nSave do My Summer Car foi importado para My Winter Car.");
+                    if (localizationManager != null)
+                    {
+                        message = localizationManager.GetString("popup", "successImport", message);
+                    }
                     
                     if (!backupCreated)
-                        message += "\n\n" + (localizationManager != null ? localizationManager.GetString("popup", "warningBackupFailed", "AVISO: Falha ao criar backup do save anterior.") : "AVISO: Falha ao criar backup do save anterior.");
+                    {
+                        string warning = LocalizationManager.Text("WARNING: Failed to create backup of previous save.", "AVISO: Falha ao criar backup do save anterior.");
+                        if (localizationManager != null)
+                        {
+                            warning = localizationManager.GetString("popup", "warningBackupFailed", warning);
+                        }
+                        message += "\n\n" + warning;
+                    }
                 }
                 else
                 {
-                    message = localizationManager != null
-                        ? localizationManager.GetString("popup", "successImportNoSave", "Save do My Summer Car foi importado para My Winter Car!\nAviso: Não havia save anterior para backup.")
-                        : "Save do My Summer Car foi importado para My Winter Car!\nAviso: Não havia save anterior para backup.";
+                    message = LocalizationManager.Text("Save from My Summer Car was imported to My Winter Car!\nWarning: No previous save to backup.", "Save do My Summer Car foi importado para My Winter Car!\nAviso: Não havia save anterior para backup.");
+                    if (localizationManager != null)
+                    {
+                        message = localizationManager.GetString("popup", "successImportNoSave", message);
+                    }
                 }
                 
-                string title = localizationManager != null
-                    ? localizationManager.GetString("popup", "titleSuccess", "SUCESSO")
-                    : "SUCESSO";
+                string title = LocalizationManager.Text("SUCCESS", "SUCESSO");
+                if (localizationManager != null)
+                {
+                    title = localizationManager.GetString("popup", "titleSuccess", title);
+                }
                 ModUI.ShowMessage(backupCreated ? message : message, title);
             }
             catch (Exception ex)
             {
-                string errorPrefix = localizationManager != null
-                    ? localizationManager.GetString("popup", "errorImport", "Error importing save: ")
-                    : "Erro ao importar save: ";
-                ModUI.ShowMessage(errorPrefix + ex.Message, localizationManager != null ? localizationManager.GetString("popup", "titleFailure", "FALHA") : "FALHA");
+                string errorPrefix = LocalizationManager.Text("Error importing save: ", "Erro ao importar save: ");
+                if (localizationManager != null)
+                {
+                    errorPrefix = localizationManager.GetString("popup", "errorImport", errorPrefix);
+                }
+                string titleFailure = LocalizationManager.Text("FAILURE", "FALHA");
+                if (localizationManager != null)
+                {
+                    titleFailure = localizationManager.GetString("popup", "titleFailure", titleFailure);
+                }
+                ModUI.ShowMessage(errorPrefix + ex.Message, titleFailure);
             }
         }
 
@@ -213,8 +241,13 @@ namespace BackupSave
             
             if (!Directory.Exists(externalBackupRootPath))
             {
-                string alreadyMsg = localizationManager != null ? localizationManager.GetString("popup", "importAlreadyDone", "A importação já foi concluída.\nA lista de backups já está atualizada.") : "A importação já foi concluída.\nA lista de backups já está atualizada.";
-                string titleAlreadyDone = localizationManager != null ? localizationManager.GetString("popup", "titleImportAlreadyDone", "IMPORTAÇÃO JÁ REALIZADA") : "IMPORTAÇÃO JÁ REALIZADA";
+                string alreadyMsg = LocalizationManager.Text("Import has already been completed.\nThe backup list is already updated.", "A importação já foi concluída.\nA lista de backups já está atualizada.");
+                string titleAlreadyDone = LocalizationManager.Text("IMPORT ALREADY COMPLETED", "IMPORTAÇÃO JÁ REALIZADA");
+                if (localizationManager != null)
+                {
+                    alreadyMsg = localizationManager.GetString("popup", "importAlreadyDone", alreadyMsg);
+                    titleAlreadyDone = localizationManager.GetString("popup", "titleImportAlreadyDone", titleAlreadyDone);
+                }
                 ModUI.ShowMessage(alreadyMsg, titleAlreadyDone);
                 return 0;
             }
@@ -222,8 +255,13 @@ namespace BackupSave
             string[] backups = GetExternalBackupList();
             if (backups.Length == 0)
             {
-                string alreadyMsg = localizationManager != null ? localizationManager.GetString("popup", "importAlreadyDone", "A importação já foi concluída.\nA lista de backups já está atualizada.") : "A importação já foi concluída.\nA lista de backups já está atualizada.";
-                string titleAlreadyDone = localizationManager != null ? localizationManager.GetString("popup", "titleImportAlreadyDone", "IMPORTAÇÃO JÁ REALIZADA") : "IMPORTAÇÃO JÁ REALIZADA";
+                string alreadyMsg = LocalizationManager.Text("Import has already been completed.\nThe backup list is already updated.", "A importação já foi concluída.\nA lista de backups já está atualizada.");
+                string titleAlreadyDone = LocalizationManager.Text("IMPORT ALREADY COMPLETED", "IMPORTAÇÃO JÁ REALIZADA");
+                if (localizationManager != null)
+                {
+                    alreadyMsg = localizationManager.GetString("popup", "importAlreadyDone", alreadyMsg);
+                    titleAlreadyDone = localizationManager.GetString("popup", "titleImportAlreadyDone", titleAlreadyDone);
+                }
                 ModUI.ShowMessage(alreadyMsg, titleAlreadyDone);
                 return 0;
             }
@@ -233,19 +271,31 @@ namespace BackupSave
             foreach (string backupName in backups)
             {
                 string externalBackupPath = Path.Combine(externalBackupRootPath, backupName);
-                string importedPrefix = localizationManager != null ? localizationManager.GetImportedPrefix() : "IMPORTADO - ";
+                string importedPrefix = LocalizationManager.Text("IMPORTED - ", "IMPORTADO - ");
+                if (localizationManager != null)
+                {
+                    importedPrefix = localizationManager.GetImportedPrefix();
+                }
                 string importedName = importedPrefix + backupName;
                 
                 if (backupManager.ImportExternalBackupPath(externalBackupPath, importedName, backupLimit, false))
                 {
                     importedCount++;
-                    string importedMsg = localizationManager != null ? localizationManager.GetString("log", "externalBackupImported", "[BackupSave] Backup externo importado: ") : "[BackupSave] Backup externo importado: ";
+                    string importedMsg = LocalizationManager.Text("[BackupSave] External backup imported: ", "[BackupSave] Backup externo importado: ");
+                    if (localizationManager != null)
+                    {
+                        importedMsg = localizationManager.GetString("log", "externalBackupImported", importedMsg);
+                    }
                     ModConsole.Log("<color=#00ff00>" + importedMsg + importedName + "</color>");
                 }
                 else
                 {
                     allImported = false;
-                    string errorMsg = localizationManager != null ? localizationManager.GetString("log", "errorCreatingBackup", "[BackupSave] Erro ao criar backup") : "[BackupSave] Erro ao criar backup";
+                    string errorMsg = LocalizationManager.Text("[BackupSave] Error creating backup", "[BackupSave] Erro ao criar backup");
+                    if (localizationManager != null)
+                    {
+                        errorMsg = localizationManager.GetString("log", "errorCreatingBackup", errorMsg);
+                    }
                     ModConsole.Error(errorMsg + ": " + importedName);
                 }
             }
@@ -257,24 +307,46 @@ namespace BackupSave
             if (importedCount > 0 && allImported)
             {
                 Directory.Delete(externalBackupRootPath, true);
-                string folderDeletedMsg = localizationManager != null ? localizationManager.GetString("log", "externalBackupFolderDeleted", "[BackupSave] Pasta de backup externo deletada com sucesso.") : "[BackupSave] Pasta de backup externo deletada com sucesso.";
+                string folderDeletedMsg = LocalizationManager.Text("[BackupSave] External backup folder successfully deleted.", "[BackupSave] Pasta de backup externo deletada com sucesso.");
+                if (localizationManager != null)
+                {
+                    folderDeletedMsg = localizationManager.GetString("log", "externalBackupFolderDeleted", folderDeletedMsg);
+                }
                 ModConsole.Log("<color=#00ff00>" + folderDeletedMsg + "</color>");
                 
                 // Pop-up informando importação concluída
-                string completedMsg = (localizationManager != null ? localizationManager.GetString("popup", "importCompleted", "Total de ") : "Total de ") + importedCount + (localizationManager != null ? localizationManager.GetString("popup", "importCompletedEnd", " backup(s) importado(s) com sucesso!\nPasta de backup excluída.\nA lista de backups foi atualizada.") : " backup(s) importado(s) com sucesso!\nPasta de backup excluída.\nA lista de backups foi atualizada.");
-                string titleCompleted = localizationManager != null ? localizationManager.GetString("popup", "titleImportCompleted", "IMPORTAÇÃO CONCLUÍDA") : "IMPORTAÇÃO CONCLUÍDA";
+                string completedStart = LocalizationManager.Text("Total of ", "Total de ");
+                string completedEnd = LocalizationManager.Text(" backup(s) imported successfully!\nBackup folder deleted.\nThe backup list has been updated.", " backup(s) importado(s) com sucesso!\nPasta de backup excluída.\nA lista de backups foi atualizada.");
+                string titleCompleted = LocalizationManager.Text("IMPORT COMPLETED", "IMPORTAÇÃO CONCLUÍDA");
+                if (localizationManager != null)
+                {
+                    completedStart = localizationManager.GetString("popup", "importCompleted", completedStart);
+                    completedEnd = localizationManager.GetString("popup", "importCompletedEnd", completedEnd);
+                    titleCompleted = localizationManager.GetString("popup", "titleImportCompleted", titleCompleted);
+                }
+                string completedMsg = completedStart + importedCount + completedEnd;
                 ModUI.ShowMessage(completedMsg, titleCompleted);
             }
             else if (importedCount > 0)
             {
-                string partialMsg = localizationManager != null ? localizationManager.GetString("popup", "importPartial", "Alguns backups foram importados, mas houve falhas.\nA pasta original foi mantida para você tentar novamente.") : "Alguns backups foram importados, mas houve falhas.\nA pasta original foi mantida para você tentar novamente.";
-                string titleWarning = localizationManager != null ? localizationManager.GetString("popup", "titleWarning", "AVISO") : "AVISO";
+                string partialMsg = LocalizationManager.Text("Some backups were imported, but a few failed.\nThe original folder was kept so you can try again.", "Alguns backups foram importados, mas houve falhas.\nA pasta original foi mantida para você tentar novamente.");
+                string titleWarning = LocalizationManager.Text("WARNING", "AVISO");
+                if (localizationManager != null)
+                {
+                    partialMsg = localizationManager.GetString("popup", "importPartial", partialMsg);
+                    titleWarning = localizationManager.GetString("popup", "titleWarning", titleWarning);
+                }
                 ModUI.ShowMessage(partialMsg, titleWarning);
             }
             else if (!allImported)
             {
-                string failMsg = localizationManager != null ? localizationManager.GetString("popup", "importFailed", "Falha ao importar os backups.\nA pasta original foi mantida para você tentar novamente.") : "Falha ao importar os backups.\nA pasta original foi mantida para você tentar novamente.";
-                string titleFailure = localizationManager != null ? localizationManager.GetString("popup", "titleFailure", "FALHA") : "FALHA";
+                string failMsg = LocalizationManager.Text("Failed to import backups.\nThe original folder was kept so you can try again.", "Falha ao importar os backups.\nA pasta original foi mantida para você tentar novamente.");
+                string titleFailure = LocalizationManager.Text("FAILURE", "FALHA");
+                if (localizationManager != null)
+                {
+                    failMsg = localizationManager.GetString("popup", "importFailed", failMsg);
+                    titleFailure = localizationManager.GetString("popup", "titleFailure", titleFailure);
+                }
                 ModUI.ShowMessage(failMsg, titleFailure);
             }
             

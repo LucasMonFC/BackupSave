@@ -80,18 +80,29 @@ namespace BackupSave
                 }
 
                 // Mostrar status da Restauração Automática quando save é carregado
+                string disabledLog = LocalizationManager.Text("[BackupSave] Automatic Restoration: Disabled", "[BackupSave] Restauração Automática: Desligada");
+                string restoreAllLog = LocalizationManager.Text("[BackupSave] Automatic Restoration: Restore All", "[BackupSave] Restauração Automática: Restaurar Tudo");
+                string restoreGraveyardLog = LocalizationManager.Text("[BackupSave] Automatic Restoration: Restore keeping gravestones", "[BackupSave] Restauração Automática: Restaurar mantendo as lápides");
+                if (localizationManager != null)
+                {
+                    disabledLog = localizationManager.GetString("log", "autoRestoreModeDisabled", disabledLog);
+                    restoreAllLog = localizationManager.GetString("log", "autoRestoreModeRestoreAll", restoreAllLog);
+                    restoreGraveyardLog = localizationManager.GetString("log", "autoRestoreModeRestoreGraveyard", restoreGraveyardLog);
+                }
                 string[] modeLogMessages = new string[] 
                 {
-                    localizationManager != null ? localizationManager.GetString("log", "autoRestoreModeDisabled", "[BackupSave] Restauração Automática: Desligada") : "[BackupSave] Restauração Automática: Desligada",
-                    localizationManager != null ? localizationManager.GetString("log", "autoRestoreModeRestoreAll", "[BackupSave] Restauração Automática: Restaurar Tudo") : "[BackupSave] Restauração Automática: Restaurar Tudo",
-                    localizationManager != null ? localizationManager.GetString("log", "autoRestoreModeRestoreGraveyard", "[BackupSave] Restauração Automática: Restaurar mantendo as lápides") : "[BackupSave] Restauração Automática: Restaurar mantendo as lápides"
+                    disabledLog,
+                    restoreAllLog,
+                    restoreGraveyardLog
                 };
                 string logColor = autoRestoreMode == 0 ? "#ff0000" : "#00ff00"; // Vermelho se desligada, verde se ligada
                 ModConsole.Log("<color=" + logColor + ">" + modeLogMessages[autoRestoreMode] + "</color>");
             }
             catch (Exception ex)
             {
-                ModConsole.Error("[BackupSave] Erro ao fazer backup do save\n" + ex.Message);
+                ModConsole.Error(LocalizationManager.Text(
+                    "[BackupSave] Error backing up the save\n",
+                    "[BackupSave] Erro ao fazer backup do save\n") + ex.Message);
                 backupWasCreated = false;
             }
         }
@@ -149,7 +160,9 @@ namespace BackupSave
             }
             catch (Exception ex)
             {
-                ModConsole.Error("[BackupSave] Erro ao verificar morte: " + ex.Message);
+                ModConsole.Error(LocalizationManager.Text(
+                    "[BackupSave] Error checking death state: ",
+                    "[BackupSave] Erro ao verificar morte: ") + ex.Message);
             }
         }
 
@@ -178,16 +191,33 @@ namespace BackupSave
                             File.Delete(flagFilePath);
                             
                             // Mensagem customizada baseada no modo com nome do backup em cor verde
-                            string message = localizationManager != null ? localizationManager.GetString("popup", "deathMessage", "Você morreu!") : "Você morreu!";
-                            message += "\n" + (localizationManager != null ? localizationManager.GetString("popup", "successRestored", "Seu backup foi restaurado com sucesso.") : "Seu backup foi restaurado com sucesso.");
+                            string message = LocalizationManager.Text("You died!", "Você morreu!");
+                            string restoredMessage = LocalizationManager.Text("Your backup has been successfully restored.", "Seu backup foi restaurado com sucesso.");
+                            if (localizationManager != null)
+                            {
+                                message = localizationManager.GetString("popup", "deathMessage", message);
+                                restoredMessage = localizationManager.GetString("popup", "successRestored", restoredMessage);
+                            }
+                            message += "\n" + restoredMessage;
                             if (!string.IsNullOrEmpty(backupName))
                             {
                                 message += "\n<color=#00ff00>" + backupName + "</color>";
                             }
                             if (preserveGraveyard)
-                                message += "\n" + (localizationManager != null ? localizationManager.GetString("popup", "graveyardPreserved", "Seu histórico de morte e lápides foram preservados.") : "Seu histórico de morte e lápides foram preservados.");
+                            {
+                                string graveyardMessage = LocalizationManager.Text("Your death history and gravestones have been preserved.", "Seu histórico de morte e lápides foram preservados.");
+                                if (localizationManager != null)
+                                {
+                                    graveyardMessage = localizationManager.GetString("popup", "graveyardPreserved", graveyardMessage);
+                                }
+                                message += "\n" + graveyardMessage;
+                            }
                                 
-                            string titleSuccess = localizationManager != null ? localizationManager.GetString("popup", "titleSuccess", "SUCESSO") : "SUCESSO";
+                            string titleSuccess = LocalizationManager.Text("SUCCESS", "SUCESSO");
+                            if (localizationManager != null)
+                            {
+                                titleSuccess = localizationManager.GetString("popup", "titleSuccess", titleSuccess);
+                            }
                             ModUI.ShowMessage(message, titleSuccess);
 
                             // Reset para próximo ciclo
@@ -196,8 +226,13 @@ namespace BackupSave
                         }
                         else
                         {
-                            string failMsg = localizationManager != null ? localizationManager.GetString("popup", "failRestore", "Falha ao restaurar seu backup!\nVerifique se você tem um backup disponível.") : "Falha ao restaurar seu backup!\nVerifique se você tem um backup disponível.";
-                            string titleFailure = localizationManager != null ? localizationManager.GetString("popup", "titleFailure", "FALHA") : "FALHA";
+                            string failMsg = LocalizationManager.Text("Failed to restore your backup!\nCheck if you have a backup available.", "Falha ao restaurar seu backup!\nVerifique se você tem um backup disponível.");
+                            string titleFailure = LocalizationManager.Text("FAILURE", "FALHA");
+                            if (localizationManager != null)
+                            {
+                                failMsg = localizationManager.GetString("popup", "failRestore", failMsg);
+                                titleFailure = localizationManager.GetString("popup", "titleFailure", titleFailure);
+                            }
                             ModUI.ShowMessage(failMsg, titleFailure);
                             try
                             {
@@ -210,7 +245,9 @@ namespace BackupSave
             }
             catch (Exception ex)
             {
-                ModConsole.Error("[BackupSave] Erro ao processar menu: " + ex.Message);
+                ModConsole.Error(LocalizationManager.Text(
+                    "[BackupSave] Error processing menu: ",
+                    "[BackupSave] Erro ao processar menu: ") + ex.Message);
             }
         }
 
