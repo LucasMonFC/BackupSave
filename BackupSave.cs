@@ -1,8 +1,8 @@
-using MSCLoader;
+﻿using MSCLoader;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using UnityEngine;
 
@@ -12,11 +12,11 @@ namespace BackupSave
     {
         private const string LOG_PREFIX = "[BackupSave] ";
         private const string NO_BACKUPS_COLOR = "#ffaa00";
-        private const float MENU_LOCALIZATION_REAPPLY_DELAY = 0.05f;
+        private const float MENU_LOCALIZATION_REAPPLY_DELAY = 0.02f;
         public override string ID => "BackupSave";
         public override string Name => "BackupSave";
         public override string Author => "LucasMonOficial";
-        public override string Version => "1.0.1";
+        public override string Version => "2.0.0";
         public override string Description => LocalizationManager.Text(
             "Advanced automatic backup system with easy restore and backup limit control.",
             "Sistema avançado de backup automático com restauração fácil, controle de limite de backups.");
@@ -31,7 +31,6 @@ namespace BackupSave
         public override void ModSetup()
         {
             SetupFunction(Setup.OnLoad, Mod_OnLoad);
-            SetupFunction(Setup.ModSettings, Mod_Settings);
             SetupFunction(Setup.Update, ModUpdate);
             SetupFunction(Setup.OnMenuLoad, OnMenuLoad);
             
@@ -40,13 +39,13 @@ namespace BackupSave
             backupManager = new BackupManager(MSCSaves, localizationManager);
             saveImportManager = new SaveImportManager(MSCSaves, backupManager, localizationManager);
             autoRestoreManager = new AutoRestoreManager(backupManager, MSCSaves, localizationManager);
+            LoadUiSettings();
         }
 
-        private SettingsSliderInt backupLimitSlider;
-        private SettingsDropDownList SavesList;
-        private SettingsSliderInt autoRestoreModeSlider;
-        private SettingsCheckBox autoDeleteMeshsaveCheckBox;
-        private SettingsCheckBox prefixCharacterNameCheckBox;
+        private int backupLimitValue = 50;
+        private int autoRestoreModeValue = 1;
+        private bool autoDeleteMeshsaveValue = false;
+        private bool prefixCharacterNameValue = false;
         
         // Listas de backups/restore points carregadas no Mod_OnLoad (consolidadas)
         private Dictionary<string, string[]> backupLists = new Dictionary<string, string[]>();
@@ -54,49 +53,70 @@ namespace BackupSave
         private bool autoMeshsaveDeleteAttemptedInMenu = false;
         private bool menuLocalizationReapplyPending = false;
         private float menuLocalizationReapplyAt = 0f;
-        
-        // Performance cache (OTIMIZAÇÃO)
-        private string[] backupLimitValuesCache = null;
-        
-        // Rastrear mudança no slider de Modo de Restauração para logar quando altera
-        private int lastAutoRestoreMode = -1; // Iniciado com -1 para não fazer log na primeira carga
+        private MenuBackupPanel menuBackupPanel;
         
         private string GetGameSaveFolder()
             => ModLoader.CurrentGame == Game.MySummerCar ? "My Summer Car" : "My Winter Car";
 
 
         private int GetBackupLimit()
-            => backupLimitSlider != null ? backupLimitSlider.GetValue() : 50;
+            => backupLimitValue;
 
         private int GetAutoRestoreMode()
-            => autoRestoreModeSlider != null ? autoRestoreModeSlider.GetValue() : 1;
+            => autoRestoreModeValue;
 
         private bool GetAutoDeleteMeshsave()
-            => autoDeleteMeshsaveCheckBox != null ? autoDeleteMeshsaveCheckBox.GetValue() : false;
+            => autoDeleteMeshsaveValue;
 
         private bool GetPrefixCharacterName()
-            => prefixCharacterNameCheckBox != null ? prefixCharacterNameCheckBox.GetValue() : false;
+            => prefixCharacterNameValue;
 
-        // OTIMIZAÇÃO: Cache GenerateBackupLimitValues para evitar alocação a cada Mod_Settings
-        private string[] GenerateBackupLimitValues()
+        private void SetBackupLimit(int value)
         {
-            if (backupLimitValuesCache != null)
-                return backupLimitValuesCache;
-            
-            string[] values = new string[101];
-            values[0] = LocalizationManager.Text("Unlimited Backups", "Backups Ilimitados");
-            if (localizationManager != null)
-            {
-                values[0] = localizationManager.GetString("label", "unlimitedBackups", values[0]);
-            }
-            for (int i = 1; i <= 100; i++)
-            {
-                values[i] = i.ToString();
-            }
-            backupLimitValuesCache = values;
-            return values;
+            backupLimitValue = Mathf.Clamp(value, 0, 100);
+            SaveUiSettings();
         }
-        
+
+        private void SetAutoRestoreMode(int value)
+        {
+            autoRestoreModeValue = Mathf.Clamp(value, 0, 2);
+            SaveUiSettings();
+        }
+
+        private void SetAutoDeleteMeshsave(bool value)
+        {
+            autoDeleteMeshsaveValue = value;
+            SaveUiSettings();
+        }
+
+        private void SetPrefixCharacterName(bool value)
+        {
+            prefixCharacterNameValue = value;
+            SaveUiSettings();
+        }
+
+        private string GetSettingsKey(string settingName)
+        {
+            return "BackupSave_" + GetGameSaveFolder().Replace(" ", "") + "_" + settingName;
+        }
+
+        private void LoadUiSettings()
+        {
+            autoRestoreModeValue = Mathf.Clamp(PlayerPrefs.GetInt(GetSettingsKey("AutoRestoreMode"), 1), 0, 2);
+            backupLimitValue = Mathf.Clamp(PlayerPrefs.GetInt(GetSettingsKey("BackupLimit"), 50), 0, 100);
+            autoDeleteMeshsaveValue = PlayerPrefs.GetInt(GetSettingsKey("AutoDeleteMeshsave"), 0) == 1;
+            prefixCharacterNameValue = PlayerPrefs.GetInt(GetSettingsKey("PrefixCharacterName"), 0) == 1;
+        }
+
+        private void SaveUiSettings()
+        {
+            PlayerPrefs.SetInt(GetSettingsKey("AutoRestoreMode"), autoRestoreModeValue);
+            PlayerPrefs.SetInt(GetSettingsKey("BackupLimit"), backupLimitValue);
+            PlayerPrefs.SetInt(GetSettingsKey("AutoDeleteMeshsave"), autoDeleteMeshsaveValue ? 1 : 0);
+            PlayerPrefs.SetInt(GetSettingsKey("PrefixCharacterName"), prefixCharacterNameValue ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+
         private void EnsureListsLoaded()
         {
             if (listsLoaded) return;
@@ -113,7 +133,6 @@ namespace BackupSave
         {
             listsLoaded = false;
             EnsureListsLoaded();
-            UpdateSavesDropdownItems();
         }
 
         private string[] GetSavesDropdownItems(string gameFolder)
@@ -130,6 +149,7 @@ namespace BackupSave
             string cleaned = RemoveListColorTags(itemName);
             return cleaned == LocalizationManager.Text("No backups available", "Nenhum backup disponível")
                 || cleaned == "No backups available"
+                || cleaned == "Nenhum backup disponivel"
                 || cleaned == "Nenhum backup disponível";
         }
 
@@ -141,77 +161,6 @@ namespace BackupSave
                 text = localizationManager.GetString("label", "noBackupsItem", text);
             }
             return "<color=" + NO_BACKUPS_COLOR + ">" + text + "</color>";
-        }
-
-        private void UpdateSavesDropdownItems()
-        {
-            if (SavesList == null)
-                return;
-
-            string[] items = GetSavesDropdownItems(GetGameSaveFolder());
-
-            try
-            {
-                Type listType = typeof(SettingsDropDownList);
-                FieldInfo itemsField = listType.GetField("ArrayOfItems", BindingFlags.Instance | BindingFlags.NonPublic);
-                FieldInfo valueField = listType.GetField("Value", BindingFlags.Instance | BindingFlags.NonPublic);
-                FieldInfo defaultValueField = listType.GetField("DefaultValue", BindingFlags.Instance | BindingFlags.NonPublic);
-
-                if (itemsField != null) itemsField.SetValue(SavesList, items);
-                if (valueField != null) valueField.SetValue(SavesList, 0);
-                if (defaultValueField != null) defaultValueField.SetValue(SavesList, 0);
-
-                UpdateVisibleDropDownItems(items);
-                SavesList.SetSelectedItemIndex(0);
-            }
-            catch (Exception ex)
-            {
-                ModConsole.Error(LocalizationManager.Text(
-                    LOG_PREFIX + "Error updating backup list: ",
-                    LOG_PREFIX + "Erro ao atualizar lista de backups: ") + ex.Message);
-            }
-        }
-
-        private void UpdateVisibleDropDownItems(string[] items)
-        {
-            FieldInfo settingsElementField = typeof(ModSetting).GetField("SettingsElement", BindingFlags.Instance | BindingFlags.NonPublic);
-            object settingsElement = settingsElementField != null ? settingsElementField.GetValue(SavesList) : null;
-            if (settingsElement == null)
-                return;
-
-            FieldInfo dropDownField = settingsElement.GetType().GetField("dropDownList", BindingFlags.Instance | BindingFlags.Public);
-            object dropDown = dropDownField != null ? dropDownField.GetValue(settingsElement) : null;
-            if (dropDown == null)
-                return;
-
-            Type itemType = Type.GetType("MSCLoader.DropDownListItem, MSCLoader");
-            if (itemType == null)
-                return;
-
-            Type genericListType = typeof(List<>).MakeGenericType(itemType);
-            IList dropDownItems = (IList)Activator.CreateInstance(genericListType);
-            ConstructorInfo constructor = itemType.GetConstructor(new Type[] { typeof(string), typeof(string), typeof(Sprite), typeof(bool), typeof(Action) });
-
-            foreach (string item in items)
-            {
-                object dropDownItem = constructor != null
-                    ? constructor.Invoke(new object[] { item, item, null, false, null })
-                    : Activator.CreateInstance(itemType);
-                dropDownItems.Add(dropDownItem);
-            }
-
-            FieldInfo visibleItemsField = dropDown.GetType().GetField("Items", BindingFlags.Instance | BindingFlags.Public);
-            if (visibleItemsField != null)
-                visibleItemsField.SetValue(dropDown, dropDownItems);
-
-            MethodInfo rebuild = dropDown.GetType().GetMethod("RebuildPanel", BindingFlags.Instance | BindingFlags.NonPublic);
-            MethodInfo redraw = dropDown.GetType().GetMethod("RedrawPanel", BindingFlags.Instance | BindingFlags.NonPublic);
-            MethodInfo updateSelected = dropDown.GetType().GetMethod("UpdateSelected", BindingFlags.Instance | BindingFlags.NonPublic);
-            PropertyInfo selectedIndex = dropDown.GetType().GetProperty("SelectedIndex", BindingFlags.Instance | BindingFlags.Public);
-            if (selectedIndex != null) selectedIndex.SetValue(dropDown, 0, null);
-            if (rebuild != null) rebuild.Invoke(dropDown, null);
-            if (redraw != null) redraw.Invoke(dropDown, null);
-            if (updateSelected != null) updateSelected.Invoke(dropDown, null);
         }
 
         private string[] GetUnifiedBackupAndRestorePointList(string gameFolder)
@@ -242,99 +191,20 @@ namespace BackupSave
             return LocalizationManager.Text("RP: ", "PR: ");
         }
 
-        private void Mod_Settings()
+        private string GetMenuPanelTitle()
         {
-            // Verificar se o mod foi inicializado corretamente
-            if (localizationManager == null || backupManager == null)
-            {
-                ModConsole.Error(LocalizationManager.Text(
-                    "[BackupSave] Error: Localization Manager or Backup Manager were not initialized!",
-                    "[BackupSave] Erro: Localization Manager ou Backup Manager não inicializados!"));
-                return;
-            }
-            
-            // Garantir que as listas foram carregadas
+            return localizationManager.GetString("header", "menuBackupManager", LocalizationManager.Text("BACKUP MANAGER", "GERENCIADOR DE BACKUPS"));
+        }
+
+        private string GetManageBackupsButtonText()
+        {
+            return localizationManager.GetString("button", "manageBackups", "BACKUPS");
+        }
+
+        private string[] GetMenuPanelBackupItems()
+        {
             EnsureListsLoaded();
-            
-            string gameFolder = GetGameSaveFolder();
-
-            // Header principal do mod com Informações e Créditos
-            Settings.AddHeader(localizationManager.GetString("header", "backupsave", LocalizationManager.Text("BACKUPSAVE", "BACKUPSAVE")), new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255));
-            Settings.CreateGroup(true);
-            Settings.AddButton(localizationManager.GetString("button", "info", LocalizationManager.Text("<color=white>ℹ INFORMATION</color>", "<color=white>ℹ INFORMAÇÕES</color>")), new Action(OnShowModInfoClick));
-            Settings.AddButton(localizationManager.GetString("button", "credits", LocalizationManager.Text("<color=yellow>★ CREDITS</color>", "<color=yellow>★ CRÉDITOS</color>")), new Action(OnShowCreditsClick));
-            Settings.EndGroup();
-
-            Settings.AddHeader(localizationManager.GetString("header", "settings", LocalizationManager.Text("SAVE SETTINGS", "CONFIGURAÇÕES DE SAVE")), new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255));
-            
-            Settings.AddText(localizationManager.GetString("text", "autoRestore", LocalizationManager.Text("<b>Automatic Restore Mode</b>\nThe mod detects when the save is deleted (death in Mortal Mode) and can automatically restore the latest backup.", "<b>Modo de Restauração Automática</b>\nO mod detecta quando o save é deletado (morte em Modo Mortal) e pode restaurar automaticamente o último backup.")));
-            string[] autoRestoreModes = localizationManager.GetAutoRestoreModeValues();
-            autoRestoreModeSlider = Settings.AddSlider("autoRestoreMode", localizationManager.GetString("label", "autoRestoreMode", LocalizationManager.Text("Restoration Mode", "Modo de Restauração")), 0, 2, 1, null, autoRestoreModes);
-            
-            Settings.AddText("____________________________________________________________________________________");
-            
-            Settings.AddText(localizationManager.GetString("text", "backupLimit", LocalizationManager.Text("<b>Backup Limit Configuration</b>\nSet the maximum number of backups to keep. Old backups will be deleted automatically.", "<b>Configuração de Limite de Backups</b>\nDefina o número máximo de backups a manter. Backups antigos serão deletados automaticamente.")));
-            string[] backupLimitValues = GenerateBackupLimitValues();
-            backupLimitSlider = Settings.AddSlider("backupLimit", localizationManager.GetString("label", "backupLimit", LocalizationManager.Text("Maximum Number of Backups to Store", "Número Máximo de Backups para Armazenar")), 0, 100, 50, null, backupLimitValues);
-            
-            Settings.AddText("____________________________________________________________________________________");
-            
-            Settings.AddText(localizationManager.GetString("text", "prefixCharName", LocalizationManager.Text("<b>Character Name Prefix</b>\nPrefix backups with the first name of the character to identify them easily.", "<b>Prefixo do Nome do Personagem</b>\nPrefixe os backups com o primeiro nome do personagem para identificá-los facilmente.")));
-            prefixCharacterNameCheckBox = Settings.AddCheckBox("prefixCharacterName", localizationManager.GetString("label", "prefixCharacterName", LocalizationManager.Text("Prefix backup with character name", "Prefixar backups com o nome do personagem")), false);
-            
-            Settings.AddText("____________________________________________________________________________________");
-            
-            Settings.AddText(localizationManager.GetString("text", "backupsAndPoints", LocalizationManager.Text("<b>Backups and Restore Points</b>\nSelect a backup or restore point to restore/delete", "<b>Backups e Pontos de Restauração</b>\nSelecione um backup ou ponto de restauração para restaurar/deletar")));
-            string[] savesDropdownItems = GetSavesDropdownItems(gameFolder);
-            if (savesDropdownItems.Length == 1 && IsNoBackupsItem(savesDropdownItems[0]))
-            {
-                Settings.AddText(localizationManager.GetString("text", "noBackups", LocalizationManager.Text("You don't have any backups or restore points yet.", "Você ainda não tem nenhum backup ou ponto de restauração.")));
-            }
-            SavesList = Settings.AddDropDownList("saveselect", localizationManager.GetString("label", "selectSave", LocalizationManager.Text("Select a save or point", "Selecione um save ou ponto")), savesDropdownItems, 0);
-                
-                // Add Restore, Delete and Restart buttons side-by-side using horizontal group
-                Settings.CreateGroup(true);
-                Settings.AddButton(localizationManager.GetString("button", "restore", LocalizationManager.Text("RESTORE", "RESTAURAR")), new Action(OnRestoreBackupClick));
-                Settings.AddButton(localizationManager.GetString("button", "delete", LocalizationManager.Text("<color=red>DELETE</color>", "<color=red>DELETAR</color>")), new Action(OnDeleteBackupClick));
-                Settings.AddButton(localizationManager.GetString("button", "restartMenu", LocalizationManager.Text("<color=cyan>RESTART MENU</color>", "<color=cyan>REINICIAR MENU</color>")), new Action(OnRestartLevel1Click));
-                Settings.EndGroup();
-                
-                // Add Open Backup Folder button
-                Settings.AddButton(localizationManager.GetString("button", "openBackupFolder", LocalizationManager.Text("<color=white>OPEN BACKUP FOLDER</color>", "<color=white>ABRIR PASTA DE BACKUPS</color>")), new Action(OnOpenBackupFolderClick), SettingsButton.ButtonIcon.Folder);
-                
-                Settings.AddText(localizationManager.GetString("text", "reloadTip", LocalizationManager.Text("Restore, create, or delete updates the list immediately.", "Restaurar, criar ou deletar atualiza a lista imediatamente.")));
-
-             
-            // Create Restore Point Section with header collapsed by default
-            Settings.AddHeader(localizationManager.GetString("header", "createRestorePoint", LocalizationManager.Text("CREATE RESTORE POINT", "CRIAR PONTO DE RESTAURAÇÃO")), new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255), collapsedByDefault: true);
-            SettingsTextBox restorePointInput = Settings.AddTextBox("restorePointName", localizationManager.GetString("label", "restorePointName", LocalizationManager.Text("Restore Point Name (optional)", "Nome do Ponto de Restauração (opcional)")), string.Empty, localizationManager.GetString("text", "restorePointPlaceholder", LocalizationManager.Text("Type the name here...", "Digite o nome aqui...")));
-            Settings.AddButton(localizationManager.GetString("button", "createRestorePoint", LocalizationManager.Text("Create Restore Point", "Criar Ponto de Restauração")), new Action(() => OnCreateRestorePointClick(restorePointInput)));
-            Settings.AddText(localizationManager.GetString("text", "restorePointInfo", LocalizationManager.Text("Restore points are permanent and will not be deleted by backup limits.", "Os pontos de restauração são permanentes e não serão excluídos pelos limites de backup.")));
-            
-            // Delete Meshsave Section with header collapsed by default
-            Settings.AddHeader(localizationManager.GetString("header", "deleteMeshsave", LocalizationManager.Text("DELETE MESHSAVE FILE", "DELETAR ARQUIVO MESHSAVE")), new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255), collapsedByDefault: true);
-            Settings.AddText(localizationManager.GetString("text", "meshsaveInfo", LocalizationManager.Text("Delete the meshsave.txt file to restore the vehicle format.", "Delete o arquivo meshsave.txt para restaurar o formato do veículo.")));
-            Settings.CreateGroup(true);
-            Settings.AddButton(localizationManager.GetString("button", "deleteMeshsave", LocalizationManager.Text("<color=red>Delete meshsave.txt</color>", "<color=red>Deletar meshsave.txt</color>")), new Action(OnDeleteMeshSaveClick));
-            Settings.EndGroup();
-            autoDeleteMeshsaveCheckBox = Settings.AddCheckBox("autoDeleteMeshsave", localizationManager.GetString("label", "autoDeleteMeshsave", LocalizationManager.Text("Delete meshsave automatically", "Deletar meshsave automaticamente")), false);
-
-            // Save Import Button - Only show if in MWC with header collapsed by default
-            if (ModLoader.CurrentGame == Game.MyWinterCar && saveImportManager.HasMSCSave())
-            {
-                Settings.AddHeader(localizationManager.GetString("header", "importSave", LocalizationManager.Text("IMPORT SAVE", "IMPORTAR SAVE")), new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255), collapsedByDefault: true);
-                Settings.AddText(localizationManager.GetString("text", "importInfo", LocalizationManager.Text("Import your save from My Summer Car to My Winter Car with backup.", "Importe seu save de My Summer Car para My Winter Car com backup.")));
-                Settings.AddButton(localizationManager.GetString("button", "importSave", LocalizationManager.Text("Import Save from My Summer Car", "Importar Save do My Summer Car")), new Action(OnImportSaveClick));
-            }
-            
-            // External Backup Import Button - Only show if in MSC and external backups exist
-            if (ModLoader.CurrentGame == Game.MySummerCar && saveImportManager.HasExternalBackups())
-            {
-                Settings.AddHeader(localizationManager.GetString("header", "importExternalBackups", LocalizationManager.Text("IMPORT SAVEBACKUPER BACKUPS", "IMPORTAR BACKUPS DE SAVEBACKUPER")), new Color32(100, 100, 100, 255), new Color32(255, 255, 255, 255), collapsedByDefault: true);
-                Settings.AddText(localizationManager.GetString("text", "importExternalPath", LocalizationManager.Text("Import all backups from: C:\\Users\\{user}\\AppData\\LocalLow\\Amistech\\Backup", "Importar todos os backups de: C:\\Users\\{user}\\AppData\\LocalLow\\Amistech\\Backup")));
-                Settings.AddButton(localizationManager.GetString("button", "importAllBackups", LocalizationManager.Text("Import All Backups", "Importar Todos os Backups")), new Action(() => OnImportAllExternalBackupsClick()));
-                Settings.AddText(localizationManager.GetString("text", "importedPrefix", LocalizationManager.Text("Imported backups will receive the 'IMPORTED - ' prefix for better identification.", "Backups importados receberao o prefixo 'IMPORTADO - ' para melhor identificação.")));
-            }
+            return GetSavesDropdownItems(GetGameSaveFolder());
         }
 
         // Verifica se um item da lista unificada é um ponto de restauração
@@ -362,98 +232,49 @@ namespace BackupSave
             return itemName.Replace("<color=#ff9900>", "").Replace("<color=#21ff13>", "").Replace("<color=" + NO_BACKUPS_COLOR + ">", "").Replace("</color>", "");
         }
 
-        private void OnRestoreBackupClick()
+        private void RestoreSelectedBackupItem(string selectedName)
         {
-            if (SavesList == null) return;
-            string selectedName = SavesList.GetSelectedItemName();
             if (IsNoBackupsItem(selectedName))
-            {
-                ShowPopup(
-                    localizationManager.GetString("text", "noBackups", LocalizationManager.Text("You don't have any backups or restore points yet.", "Você ainda não tem nenhum backup ou ponto de restauração.")),
-                    "",
-                    "#ffaa00",
-                    localizationManager.GetString("popup", "titleWarning", LocalizationManager.Text("WARNING", "AVISO")));
                 return;
-            }
+
             string cleanName = GetCleanBackupName(selectedName);
             bool isRestorePoint = IsRestorePointItem(selectedName);
-            bool success = isRestorePoint ? 
+            bool success = isRestorePoint ?
                 backupManager.RestoreRestorePointByName(GetGameSaveFolder(), cleanName) :
                 backupManager.RestoreBackupByName(GetGameSaveFolder(), cleanName);
-            string successMsg = isRestorePoint
-                ? localizationManager.GetString("popup", "successRestorePoint", LocalizationManager.Text("Your restore point has been successfully restored!", "Seu ponto de restauração foi restaurado com sucesso!"))
-                : localizationManager.GetString("popup", "successRestoreBackup", LocalizationManager.Text("Your backup has been successfully restored!", "Seu backup foi restaurado com sucesso!"));
-            string failMsg = isRestorePoint
-                ? localizationManager.GetString("popup", "failRestorePoint", LocalizationManager.Text("Failed to restore the restore point.", "Falha ao restaurar o ponto de restauração."))
-                : localizationManager.GetString("popup", "failRestoreBackup", LocalizationManager.Text("Failed to restore the backup.", "Falha ao restaurar o backup."));
-            ShowPopup(success ? successMsg : failMsg, cleanName, success ? (isRestorePoint ? "#ff9900" : "#00ff00") : "#ff0000", success ? localizationManager.GetString("popup", "titleSuccess", LocalizationManager.Text("SUCCESS", "SUCESSO")) : localizationManager.GetString("popup", "titleFailure", LocalizationManager.Text("FAILURE", "FALHA")));
+            if (success)
+                RefreshBackupLists();
         }
 
-        private void OnDeleteBackupClick()
+        private void DeleteSelectedBackupItem(string selectedName)
         {
-            if (SavesList == null) return;
-            string gameFolder = GetGameSaveFolder();
-            string selectedName = SavesList.GetSelectedItemName();
             if (IsNoBackupsItem(selectedName))
-            {
-                ShowPopup(
-                    localizationManager.GetString("text", "noBackups", LocalizationManager.Text("You don't have any backups or restore points yet.", "Você ainda não tem nenhum backup ou ponto de restauração.")),
-                    "",
-                    "#ffaa00",
-                    localizationManager.GetString("popup", "titleWarning", LocalizationManager.Text("WARNING", "AVISO")));
                 return;
-            }
+
+            string gameFolder = GetGameSaveFolder();
             string cleanName = GetCleanBackupName(selectedName);
             bool isRestorePoint = IsRestorePointItem(selectedName);
-            bool success = isRestorePoint ? 
+            bool success = isRestorePoint ?
                 backupManager.DeleteRestorePointByName(gameFolder, cleanName) :
                 backupManager.DeleteBackupByName(gameFolder, cleanName);
             if (success)
                 RefreshBackupLists();
-            string successMsg = isRestorePoint
-                ? localizationManager.GetString("popup", "successDeletePointMsg", LocalizationManager.Text("Restore point was successfully deleted!", "Ponto de restauração foi deletado com sucesso!"))
-                : localizationManager.GetString("popup", "successDeleteBackupMsg", LocalizationManager.Text("Backup was successfully deleted!", "Backup foi deletado com sucesso!"));
-            string failMsg = isRestorePoint
-                ? localizationManager.GetString("popup", "failDeletePointMsg", LocalizationManager.Text("Restore point was deleted.", "Ponto de restauração foi deletado."))
-                : localizationManager.GetString("popup", "failDeleteBackupMsg", LocalizationManager.Text("Backup was deleted.", "Backup foi deletado."));
-            ShowPopup(success ? successMsg : failMsg, cleanName, success ? (isRestorePoint ? "#ffaa00" : "#00ff00") : "#ff0000", success ? localizationManager.GetString("popup", "titleSuccess", LocalizationManager.Text("SUCCESS", "SUCESSO")) : localizationManager.GetString("popup", "titleFailure", LocalizationManager.Text("FAILURE", "FALHA")));
         }
 
-        private void OnDeleteMeshSaveClick()
-        {
-            bool success = backupManager.DeleteMeshSaveFile(GetGameSaveFolder());
-            string successMsg = localizationManager.GetString("popup", "successDeleteMeshsaveMsg", LocalizationManager.Text("Meshsave.txt file was successfully deleted!", "Arquivo meshsave.txt foi deletado com sucesso!"));
-            string failMsg = localizationManager.GetString("popup", "notFoundMeshsave", LocalizationManager.Text("Meshsave.txt file not found.", "Arquivo meshsave.txt não foi encontrado."));
-            string titleWarning = localizationManager.GetString("popup", "titleWarning", LocalizationManager.Text("WARNING", "AVISO"));
-            ShowPopup(success ? successMsg : failMsg, "", success ? "#00ff00" : "#ffaa00", success ? localizationManager.GetString("popup", "titleSuccess", LocalizationManager.Text("SUCCESS", "SUCESSO")) : titleWarning);
-        }
-
-        private void OnCreateRestorePointClick(SettingsTextBox restorePointInput)
+        private void CreateRestorePointFromName(string restorePointName)
         {
             string gameFolder = GetGameSaveFolder();
-            string restorePointName = restorePointInput != null ? restorePointInput.GetValue() : "";
             string createdPointName = backupManager.CreateRestorePoint(gameFolder, restorePointName);
             if (!string.IsNullOrEmpty(createdPointName))
-            {
                 RefreshBackupLists();
-                ShowPopup(
-                    localizationManager.GetString("popup", "successCreatePointMsg", LocalizationManager.Text("Restore point was successfully created!", "Ponto de restauração foi criado com sucesso!")),
-                    createdPointName,
-                    "#ff9900",
-                    localizationManager.GetString("popup", "titleSuccess", LocalizationManager.Text("SUCCESS", "SUCESSO")));
-            }
-            else
-                ShowPopup(
-                    localizationManager.GetString("popup", "failCreatePointMsg", LocalizationManager.Text("Failed to create restore point!\n\nNo valid save file was found.", "Falha ao criar ponto de restauração!\n\nNenhum arquivo de save válido foi encontrado.")),
-                    "",
-                    "#ff0000",
-                    localizationManager.GetString("popup", "titleFailure", LocalizationManager.Text("FAILURE", "FALHA")));
+        }
+        private void OnDeleteMeshSaveClick()
+        {
+            backupManager.DeleteMeshSaveFile(GetGameSaveFolder());
         }
 
         private void OnRestartLevel1Click()
         {
-            string restartingMessage = LocalizationManager.Text("[BackupSave] Restarting menu", "[BackupSave] Reiniciando o menu");
-            ModConsole.Log(localizationManager.GetString("log", "restartingMenu", restartingMessage));
             ScheduleMenuLocalizationReapply();
             UnityEngine.Application.LoadLevel(1);
         }
@@ -542,32 +363,6 @@ namespace BackupSave
             return true;
         }
 
-        private void OnShowModInfoClick()
-        {
-            string infoText = localizationManager.GetString("text", "infoTitle", LocalizationManager.Text("<b>BackupSave - Backup System</b>", "<b>BackupSave - Sistema de Backup</b>")) + "\n\n" + localizationManager.GetString("text", "infoFeatures", LocalizationManager.Text("<b>Features:</b>", "<b>Recursos:</b>")) + "\n";
-            infoText += localizationManager.GetString("text", "infoAutoBackup", LocalizationManager.Text("• <b>Automatic backups:</b> Every time you load the game a backup is created", "• <b>Backups automáticos:</b> Toda vez que carrega o jogo um backup é criado")) + "\n";
-            infoText += localizationManager.GetString("text", "infoAutoRestore", LocalizationManager.Text("• <b>Automatic restore:</b> Detects death and restores the latest backup automatically", "• <b>Restauração automática:</b> Detecta morte e restaura o último backup automaticamente")) + "\n";
-            infoText += localizationManager.GetString("text", "infoRestorePoints", LocalizationManager.Text("• <b>Restore Points:</b> Create permanent points to restore whenever you want", "• <b>Pontos de Restauração:</b> Crie pontos permanentes para restaurar sempre que quiser")) + "\n";
-            infoText += localizationManager.GetString("text", "infoLimitControl", LocalizationManager.Text("• <b>Limit Control:</b> Set how many backups to keep", "• <b>Controle de Limite:</b> Defina quantos backups manter")) + "\n";
-            infoText += localizationManager.GetString("text", "infoPrefixName", LocalizationManager.Text("• <b>Character Name Prefix:</b> Add the character's name to the backup name", "• <b>Prefixo do Personagem:</b> Adicione o nome do personagem ao nome do backup")) + "\n";
-            infoText += localizationManager.GetString("text", "infoMeshsave", LocalizationManager.Text("• <b>Delete meshsave:</b> Reset vehicle format when needed", "• <b>Deletar meshsave:</b> Redefina o formato do veículo quando necessário")) + "\n";
-            if (ModLoader.CurrentGame == Game.MySummerCar) infoText += localizationManager.GetString("text", "infoImportSaveBackuper", LocalizationManager.Text("• <b>Import saves from SaveBackuper:</b> Import your saves from the SaveBackuper MOD", "• <b>Importar saves do SaveBackuper:</b> Importe seus saves do MOD SaveBackuper")) + "\n";
-            if (ModLoader.CurrentGame == Game.MyWinterCar) infoText += localizationManager.GetString("text", "infoImportSaveMWC", LocalizationManager.Text("• <b>Import Save:</b> Import your save from My Summer Car to My Winter Car", "• <b>Importar Save:</b> Importe seu save do My Summer Car para o My Winter Car")) + "\n";
-            infoText += "\n" + localizationManager.GetString("text", "infoModes", LocalizationManager.Text("<b>Restoration Modes:</b>", "<b>Modos de Restauração:</b>")) + "\n";
-            infoText += localizationManager.GetString("text", "infoDisabled", LocalizationManager.Text("• <b>Disabled:</b> Does not restore automatically", "• <b>Desligado:</b> Não restaura automaticamente")) + "\n";
-            infoText += localizationManager.GetString("text", "infoRestoreAll", LocalizationManager.Text("• <b>Restore All:</b> Restores all save files", "• <b>Restaurar Tudo:</b> Restaura todos os arquivos do save")) + "\n";
-            infoText += localizationManager.GetString("text", "infoGraveyard", LocalizationManager.Text("• <b>Restore Keeping Gravestones:</b> Restores but keeps the gravestones", "• <b>Restaurar Mantendo as Lápides:</b> Restaura mas mantém as lápides"));
-            ModUI.ShowMessage(infoText, localizationManager.GetString("popup", "titleInfo", LocalizationManager.Text("MOD INFORMATION", "INFORMAÇÕES DO MOD")));
-        }
-
-        private void OnShowCreditsClick()
-        {
-            string creditsText = localizationManager.GetString("text", "creditsTitle", LocalizationManager.Text("<b>BackupSave - Credits</b>", "<b>BackupSave - Créditos</b>")) + "\n\n";
-            creditsText += localizationManager.GetString("text", "creditsBasedOn", LocalizationManager.Text("<b>Based on:</b>", "<b>Baseado em:</b>")) + "\n";
-            creditsText += localizationManager.GetString("text", "creditsSaveBackuper", LocalizationManager.Text("SaveBackuper by AnimeForevere", "SaveBackuper por AnimeForevere"));
-            ModUI.ShowMessage(creditsText, localizationManager.GetString("popup", "titleCredits", LocalizationManager.Text("CREDITS", "CRÉDITOS")));
-        }
-
         private void OnImportSaveClick()
         {
             string customBackupName = "MWC-Backup";
@@ -586,6 +381,16 @@ namespace BackupSave
                 RefreshBackupLists();
         }
 
+        private bool CanShowImportSaveFromMSC()
+        {
+            return ModLoader.CurrentGame == Game.MyWinterCar && saveImportManager != null && saveImportManager.HasMSCSave();
+        }
+
+        private bool CanShowExternalBackupImport()
+        {
+            return ModLoader.CurrentGame == Game.MySummerCar && saveImportManager != null && saveImportManager.HasExternalBackups();
+        }
+
         private void OnOpenBackupFolderClick()
         {
             string gameFolder = GetGameSaveFolder();
@@ -599,14 +404,1020 @@ namespace BackupSave
             Process.Start(psi);
         }
 
-        private void ShowPopup(string message, string detailName = "", string color = "#00ff00", string title = "")
+        private void OnOpenSaveFolderClick()
         {
-            if (string.IsNullOrEmpty(title))
+            string saveFolderPath = Path.Combine(MSCSaves, GetGameSaveFolder());
+            if (!Directory.Exists(saveFolderPath))
+                Directory.CreateDirectory(saveFolderPath);
+
+            ProcessStartInfo psi = new ProcessStartInfo()
             {
-                title = LocalizationManager.Text("SUCCESS", "SUCESSO");
+                FileName = saveFolderPath,
+                UseShellExecute = true
+            };
+            Process.Start(psi);
+        }
+
+        private void EnsureMenuBackupPanel()
+        {
+            if (menuBackupPanel != null)
+                return;
+
+            GameObject panelObject = new GameObject("BackupSaveMenuPanel");
+            menuBackupPanel = panelObject.AddComponent<MenuBackupPanel>();
+            menuBackupPanel.Initialize(this);
+            UnityEngine.Object.DontDestroyOnLoad(panelObject);
+        }
+
+        private class MenuBackupPanel : MonoBehaviour
+        {
+            private SaveManager owner;
+            private bool isVisible;
+            private bool showImportSave;
+            private bool showExternalImport;
+            private int selectedIndex;
+            private string restorePointName = "";
+            private Vector2 listScroll = Vector2.zero;
+            private Vector2 detailScroll = Vector2.zero;
+            private string detailTitle = "";
+            private string detailText = "";
+            private GameObject menuButton;
+            private Texture2D overlayTexture;
+            private Texture2D selectedTexture;
+            private Texture2D listTexture;
+            private Texture2D sectionTexture;
+            private Texture2D whiteTexture;
+            private Texture2D rowTexture;
+            private Texture2D rowHoverTexture;
+            private Texture2D actionTexture;
+            private Texture2D scrollbarTrackTexture;
+            private Texture2D scrollbarThumbTexture;
+            private Color themeColor;
+            private Color themeDarkColor;
+            private GUIStyle titleStyle;
+            private GUIStyle labelStyle;
+            private GUIStyle noteStyle;
+            private GUIStyle sectionHeaderStyle;
+            private GUIStyle buttonStyle;
+            private GUIStyle deleteButtonStyle;
+            private GUIStyle itemStyle;
+            private GUIStyle selectedItemStyle;
+            private GUIStyle fieldStyle;
+            private GUIStyle listBoxStyle;
+            private GUIStyle stepperButtonStyle;
+            private GUIStyle stepperValueStyle;
+            private GUIStyle detailTextStyle;
+            private GUIStyle titleShadowStyle;
+            private GUIStyle placeholderFieldStyle;
+
+            public void Initialize(SaveManager modOwner)
+            {
+                owner = modOwner;
+                RefreshData();
+                EnsureMenuButton();
             }
-            string detail = string.IsNullOrEmpty(detailName) ? "" : "\n<color=" + color + ">" + detailName + "</color>";
-            ModUI.ShowMessage(message + detail, title);
+
+            public void Hide()
+            {
+                isVisible = false;
+            }
+
+            private void Toggle()
+            {
+                isVisible = !isVisible;
+                if (isVisible)
+                    RefreshData();
+            }
+
+            private void RefreshData()
+            {
+                if (owner == null)
+                    return;
+
+                owner.RefreshBackupLists();
+                RefreshImportVisibility();
+                ClampSelectedIndex();
+                UpdateMenuButtonText();
+            }
+
+            private void RefreshImportVisibility()
+            {
+                showImportSave = owner.CanShowImportSaveFromMSC();
+                showExternalImport = owner.CanShowExternalBackupImport();
+            }
+
+            private void OnGUI()
+            {
+                if (owner == null || owner.localizationManager == null || owner.backupManager == null)
+                    return;
+
+                if (UnityEngine.Application.loadedLevel != 1)
+                {
+                    isVisible = false;
+                    menuButton = null;
+                    return;
+                }
+
+                EnsureMenuButton();
+                InitStyles();
+
+                if (isVisible)
+                {
+                    if (Event.current != null && Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
+                    {
+                        isVisible = false;
+                        Event.current.Use();
+                        return;
+                    }
+
+                    DrawPanel();
+                }
+            }
+
+            private void EnsureMenuButton()
+            {
+                if (owner == null)
+                    return;
+
+                Transform buttonsRoot = FindButtonsRoot();
+
+                if (menuButton != null)
+                {
+                    PositionMenuButton(buttonsRoot, menuButton);
+                    UpdateMenuButtonText();
+                    return;
+                }
+
+                Transform existing = FindMenuTransform(buttonsRoot, "ButtonManageBackups");
+                if (existing != null)
+                {
+                    menuButton = existing.gameObject;
+                    PositionMenuButton(buttonsRoot, menuButton);
+                    FinalizeMenuButton(menuButton);
+                    return;
+                }
+
+                Transform reference = GetMenuButtonReference(buttonsRoot);
+                if (reference == null)
+                    return;
+
+                menuButton = UnityEngine.Object.Instantiate(reference.gameObject) as GameObject;
+                if (menuButton == null)
+                    return;
+
+                menuButton.name = "ButtonManageBackups";
+                menuButton.transform.SetParent(buttonsRoot != null ? buttonsRoot : reference.parent, false);
+                menuButton.transform.localScale = reference.localScale;
+                menuButton.transform.localRotation = reference.localRotation;
+                PositionMenuButton(buttonsRoot, menuButton);
+                FinalizeMenuButton(menuButton);
+            }
+
+            private Transform GetMenuButtonReference(Transform buttonsRoot)
+            {
+                Transform continueButton = FindMenuTransform(buttonsRoot, "ButtonContinue");
+                if (CanUseContinueButton(continueButton))
+                    return continueButton;
+
+                Transform newButton = FindMenuTransform(buttonsRoot, "ButtonNew", "ButtonNewGame");
+                if (newButton != null)
+                    return newButton;
+
+                Transform newButtonByText = FindMenuTransformByText(buttonsRoot, "NEW GAME", "NOVO JOGO");
+                if (newButtonByText != null)
+                    return newButtonByText;
+
+                Transform creditsButton = FindMenuTransform(buttonsRoot, "ButtonCredits", "ButtonQuit");
+                if (creditsButton != null)
+                    return creditsButton;
+
+                return FindMenuTransformByText(buttonsRoot, "CREDITS", "CRÉDITOS", "CREDITOS", "QUIT", "SAIR");
+            }
+
+            private void PositionMenuButton(Transform buttonsRoot, GameObject button)
+            {
+                Transform continueButton = FindMenuTransform(buttonsRoot, "ButtonContinue");
+                Transform newButton = FindMenuTransform(buttonsRoot, "ButtonNew", "ButtonNewGame");
+                bool useContinue = CanUseContinueButton(continueButton);
+                Transform reference = useContinue ? continueButton : newButton;
+                if (reference == null)
+                    reference = useContinue ? null : FindMenuTransformByText(buttonsRoot, "NEW GAME", "NOVO JOGO");
+                if (reference == null || button == null)
+                    return;
+
+                if (useContinue)
+                {
+                    Vector3 continuePosition = reference.localPosition;
+                    button.transform.localPosition = new Vector3(continuePosition.x + 0.018f, continuePosition.y + 0.095f, continuePosition.z);
+                    return;
+                }
+
+                Transform creditsButton = FindMenuTransform(buttonsRoot, "ButtonCredits");
+                if (creditsButton == null)
+                    creditsButton = FindMenuTransformByText(buttonsRoot, "CREDITS", "CRÉDITOS", "CREDITOS");
+
+                Vector3 noSaveOffset = new Vector3(0f, 0.105f, 0f);
+                if (creditsButton != null && creditsButton.parent == reference.parent)
+                {
+                    Vector3 menuStep = reference.localPosition - creditsButton.localPosition;
+                    if (menuStep.sqrMagnitude > 0.0001f)
+                        noSaveOffset = menuStep * 0.92f;
+                }
+
+                button.transform.localPosition = reference.localPosition + noSaveOffset;
+            }
+
+            private Transform FindButtonsRoot()
+            {
+                GameObject root = GameObject.Find("Interface/Buttons");
+                if (root != null)
+                    return root.transform;
+
+                Transform menuButtonReference = FindMenuTransform(null, "ButtonContinue", "ButtonNew", "ButtonNewGame", "ButtonCredits", "ButtonQuit");
+                if (menuButtonReference != null && menuButtonReference.parent != null)
+                    return menuButtonReference.parent;
+
+                menuButtonReference = FindMenuTransformByText(null, "CONTINUE", "CONTINUAR", "NEW GAME", "NOVO JOGO", "CREDITS", "CRÉDITOS", "CREDITOS", "QUIT", "SAIR");
+                return menuButtonReference != null ? menuButtonReference.parent : null;
+            }
+
+            private Transform FindMenuTransform(Transform root, params string[] names)
+            {
+                if (names == null || names.Length == 0)
+                    return null;
+
+                if (root != null)
+                {
+                    for (int i = 0; i < names.Length; i++)
+                    {
+                        Transform directChild = root.Find(names[i]);
+                        if (directChild != null)
+                            return directChild;
+                    }
+                }
+
+                Transform[] transforms = UnityEngine.Resources.FindObjectsOfTypeAll<Transform>();
+                for (int i = 0; i < transforms.Length; i++)
+                {
+                    Transform candidate = transforms[i];
+                    if (candidate == null || !IsInUsableScene(candidate.gameObject))
+                        continue;
+                    if (root != null && !candidate.IsChildOf(root))
+                        continue;
+
+                    for (int nameIndex = 0; nameIndex < names.Length; nameIndex++)
+                    {
+                        if (string.Equals(candidate.name, names[nameIndex], StringComparison.OrdinalIgnoreCase))
+                            return candidate;
+                    }
+                }
+
+                return null;
+            }
+
+            private Transform FindMenuTransformByText(Transform root, params string[] texts)
+            {
+                if (texts == null || texts.Length == 0)
+                    return null;
+
+                TextMesh[] textMeshes = UnityEngine.Resources.FindObjectsOfTypeAll<TextMesh>();
+                for (int i = 0; i < textMeshes.Length; i++)
+                {
+                    TextMesh textMesh = textMeshes[i];
+                    if (textMesh == null || string.IsNullOrEmpty(textMesh.text) || !IsInUsableScene(textMesh.gameObject))
+                        continue;
+
+                    Transform candidate = textMesh.transform;
+                    if (root != null && !candidate.IsChildOf(root))
+                        continue;
+
+                    string buttonText = textMesh.text.ToUpperInvariant();
+                    for (int textIndex = 0; textIndex < texts.Length; textIndex++)
+                    {
+                        if (buttonText.IndexOf(texts[textIndex].ToUpperInvariant()) >= 0)
+                            return GetButtonRoot(candidate, root);
+                    }
+                }
+
+                return null;
+            }
+
+            private Transform GetButtonRoot(Transform candidate, Transform buttonsRoot)
+            {
+                if (candidate == null || buttonsRoot == null)
+                    return candidate;
+
+                Transform current = candidate;
+                while (current.parent != null && current.parent != buttonsRoot)
+                    current = current.parent;
+
+                return current;
+            }
+
+            private bool IsInUsableScene(GameObject gameObject)
+            {
+                return gameObject != null && gameObject.hideFlags == HideFlags.None;
+            }
+
+            private bool CanUseContinueButton(Transform continueButton)
+            {
+                return IsMenuButtonVisible(continueButton)
+                    && owner != null
+                    && owner.backupManager != null
+                    && owner.backupManager.ValidateSaveFiles(owner.GetGameSaveFolder());
+            }
+
+            private bool IsMenuButtonVisible(Transform button)
+            {
+                if (button == null || !button.gameObject.activeInHierarchy)
+                    return false;
+
+                Renderer[] renderers = button.GetComponentsInChildren<Renderer>();
+                if (renderers.Length == 0)
+                    return true;
+
+                for (int i = 0; i < renderers.Length; i++)
+                {
+                    if (renderers[i] != null && renderers[i].enabled && renderers[i].gameObject.activeInHierarchy)
+                        return true;
+                }
+
+                return false;
+            }
+
+            private void FinalizeMenuButton(GameObject button)
+            {
+                UpdateMenuButtonText(button);
+
+                BoxCollider collider = button.GetComponent<BoxCollider>();
+                if (collider == null)
+                    collider = button.AddComponent<BoxCollider>();
+                if (collider != null)
+                {
+                    Vector3 size = collider.size;
+                    if (size == Vector3.zero)
+                        size = new Vector3(2.8f, 0.45f, 0.35f);
+                    else
+                        size.x += 2f;
+                    collider.size = size;
+                }
+
+                Component[] components = button.GetComponents<Component>();
+                for (int i = 0; i < components.Length; i++)
+                {
+                    Component component = components[i];
+                    if (component != null && component.GetType().Name == "PlayMakerFSM")
+                        UnityEngine.Object.Destroy(component);
+                }
+
+                MenuButtonClickHandler handler = button.GetComponent<MenuButtonClickHandler>();
+                if (handler == null)
+                    handler = button.AddComponent<MenuButtonClickHandler>();
+                handler.SetCallback(new Action(Toggle));
+            }
+
+            private void UpdateMenuButtonText()
+            {
+                if (menuButton != null)
+                    UpdateMenuButtonText(menuButton);
+            }
+
+            private void UpdateMenuButtonText(GameObject button)
+            {
+                if (owner == null || button == null)
+                    return;
+
+                TextMesh[] textMeshes = button.GetComponentsInChildren<TextMesh>();
+                for (int i = 0; i < textMeshes.Length; i++)
+                    textMeshes[i].text = owner.GetManageBackupsButtonText();
+            }
+
+            private void DrawPanel()
+            {
+                RefreshImportVisibility();
+
+                Rect screenRect = new Rect(0f, 0f, Screen.width, Screen.height);
+                Color oldColor = GUI.color;
+                GUI.color = new Color(1f, 1f, 1f, 0.38f);
+                GUI.DrawTexture(screenRect, overlayTexture);
+                GUI.color = oldColor;
+
+                float width = Mathf.Min(1120f, Screen.width - 10f);
+                float height = GetPanelHeight();
+                float panelY = Mathf.Max(8f, (Screen.height - height) * 0.5f - 150f);
+                Rect panelRect = new Rect((Screen.width - width) * 0.5f, panelY, width, height);
+
+                if (Event.current != null && Event.current.type == EventType.MouseDown && !panelRect.Contains(Event.current.mousePosition))
+                {
+                    isVisible = false;
+                    Event.current.Use();
+                    return;
+                }
+
+                DrawBorderedPanel(panelRect, themeColor, 3f);
+
+                DrawGameTitle(panelRect);
+
+                Rect contentRect = new Rect(panelRect.x + 12f, panelRect.y + 62f, panelRect.width - 24f, panelRect.height - 72f);
+                GUI.Box(contentRect, GUIContent.none, listBoxStyle);
+
+                Rect innerContentRect = new Rect(contentRect.x + 6f, contentRect.y + 6f, contentRect.width - 12f, contentRect.height - 12f);
+                float sideWidth = Mathf.Min(390f, Mathf.Max(350f, innerContentRect.width * 0.38f));
+                Rect mainRect = new Rect(innerContentRect.x, innerContentRect.y, innerContentRect.width - sideWidth - 10f, innerContentRect.height);
+                Rect sideRect = new Rect(mainRect.xMax + 10f, innerContentRect.y, sideWidth, innerContentRect.height);
+
+                GUILayout.BeginArea(mainRect);
+                DrawBackupSection(mainRect.width, mainRect.height);
+                GUILayout.EndArea();
+
+                GUILayout.BeginArea(sideRect);
+                Rect sideTopRect = new Rect(0f, 0f, sideRect.width, Mathf.Max(0f, sideRect.height - 105f));
+                GUILayout.BeginArea(sideTopRect);
+                GUILayout.BeginVertical(GUIStyle.none, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
+                DrawSaveSettingsSection();
+                GUILayout.Space(4f);
+                DrawMeshsaveSection();
+                GUILayout.Space(4f);
+                DrawImportSection();
+                GUILayout.EndVertical();
+                GUILayout.EndArea();
+                DrawFooterActions(new Rect(0f, sideRect.height - 97f, sideRect.width, 97f));
+                GUILayout.EndArea();
+
+                DrawDetailOverlay(panelRect);
+            }
+
+            private float GetPanelHeight()
+            {
+                float desiredHeight = 630f;
+                if (showImportSave || showExternalImport)
+                    desiredHeight += 80f;
+
+                return Mathf.Clamp(desiredHeight, 560f, Screen.height - 8f);
+            }
+
+            private void DrawGameTitle(Rect panelRect)
+            {
+                Rect titleRect = new Rect(panelRect.x + 12f, panelRect.y + 8f, panelRect.width - 24f, 50f);
+                DrawBorderedPanel(titleRect, themeColor, 2f);
+                GUI.Label(new Rect(titleRect.x + 3f, titleRect.y + 3f, titleRect.width, titleRect.height), owner.GetMenuPanelTitle(), titleShadowStyle);
+                GUI.Label(titleRect, owner.GetMenuPanelTitle(), titleStyle);
+            }
+
+            private void DrawSaveSettingsSection()
+            {
+                DrawSectionHeader(owner.localizationManager.GetString("header", "settings", LocalizationManager.Text("SAVE SETTINGS", "CONFIGURAÇÕES DE SAVE")));
+                GUILayout.Label(owner.localizationManager.GetString("label", "autoRestoreMode", LocalizationManager.Text("Automatic Restore Mode", "Modo de Restauração Automática")), labelStyle);
+
+                int mode = owner.GetAutoRestoreMode();
+                string[] modes = owner.localizationManager.GetAutoRestoreModeValues();
+                int newMode = DrawStepper(mode, 0, modes.Length - 1, modes[Mathf.Clamp(mode, 0, modes.Length - 1)], true);
+                if (newMode != mode)
+                    owner.SetAutoRestoreMode(newMode);
+
+                GUILayout.Space(8f);
+                int limit = owner.GetBackupLimit();
+                GUILayout.Label(owner.localizationManager.GetString("label", "backupLimit", LocalizationManager.Text("Backup Limit", "Limite de Backups")), labelStyle);
+                int newLimit = DrawStepper(limit, 0, 100, limit == 0 ? LocalizationManager.Text("Unlimited", "Ilimitado") : limit.ToString(), false);
+                if (newLimit != limit)
+                    owner.SetBackupLimit(newLimit);
+
+                GUILayout.Space(8f);
+                bool prefixEnabled = owner.GetPrefixCharacterName();
+                bool newPrefixEnabled = DrawLargeToggle(prefixEnabled, owner.localizationManager.GetString("label", "prefixCharacterName", LocalizationManager.Text("Prefix backup with character name", "Prefixar backups com o nome do personagem")));
+                if (newPrefixEnabled != prefixEnabled)
+                    owner.SetPrefixCharacterName(newPrefixEnabled);
+            }
+
+            private void DrawBackupSection(float availableWidth, float availableHeight)
+            {
+                const float footerHeight = 97f;
+                const float footerGap = 8f;
+                Rect topRect = new Rect(0f, 0f, availableWidth, Mathf.Max(0f, availableHeight - footerHeight - footerGap));
+                Rect footerRect = new Rect(0f, availableHeight - footerHeight, availableWidth, footerHeight);
+
+                GUILayout.BeginArea(topRect);
+                GUILayout.BeginVertical(GUIStyle.none, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
+                DrawSectionHeader(owner.localizationManager.GetString("header", "backupsAndPoints", LocalizationManager.Text("BACKUPS AND RESTORE POINTS", "BACKUPS E PONTOS DE RESTAURAÇÃO")));
+                DrawBackupList(GetBackupListHeight(topRect.height));
+                GUILayout.Space(6f);
+                DrawRestorePointNameField();
+                GUILayout.EndVertical();
+                GUILayout.EndArea();
+
+                DrawBackupActions(footerRect);
+            }
+
+            private float GetBackupListHeight(float availableHeight)
+            {
+                return Mathf.Max(120f, availableHeight - 76f);
+            }
+
+            private void DrawBackupList(float listHeight)
+            {
+                string[] items = owner.GetMenuPanelBackupItems();
+                ClampSelectedIndex(items);
+
+                GUILayout.BeginVertical(GUIStyle.none, GUILayout.Height(listHeight), GUILayout.ExpandWidth(true));
+                listScroll = GUILayout.BeginScrollView(listScroll, GUILayout.ExpandWidth(true), GUILayout.Height(listHeight));
+                if (items.Length == 0 || owner.IsNoBackupsItem(items[0]))
+                {
+                    GUILayout.Label(owner.GetNoBackupsItem(), itemStyle, GUILayout.Height(30f), GUILayout.ExpandWidth(true));
+                }
+                else
+                {
+                    for (int i = 0; i < items.Length; i++)
+                    {
+                        GUIStyle style = i == selectedIndex ? selectedItemStyle : itemStyle;
+                        if (GUILayout.Button(items[i], style, GUILayout.Height(30f), GUILayout.ExpandWidth(true)))
+                            selectedIndex = i;
+                    }
+                }
+                GUILayout.EndScrollView();
+                GUILayout.EndVertical();
+            }
+
+            private void DrawBackupActions(Rect footerRect)
+            {
+                string selected = GetSelectedItem();
+                bool hasSelection = !owner.IsNoBackupsItem(selected);
+
+                Rect primaryRow = new Rect(footerRect.x, footerRect.y, footerRect.width, 54f);
+                GUI.enabled = hasSelection;
+                if (DrawColoredButtonInRow(primaryRow, 0, 3, owner.localizationManager.GetString("button", "restore", LocalizationManager.Text("RESTORE", "RESTAURAR")), new Color(0f, 0.55f, 0.24f, 1f)))
+                    owner.RestoreSelectedBackupItem(selected);
+                if (DrawColoredButtonInRow(primaryRow, 1, 3, owner.localizationManager.GetString("button", "delete", LocalizationManager.Text("DELETE", "DELETAR")), new Color(0.72f, 0.03f, 0.03f, 1f)))
+                {
+                    owner.DeleteSelectedBackupItem(selected);
+                    ClampSelectedIndex();
+                }
+                GUI.enabled = true;
+                if (DrawColoredButtonInRow(primaryRow, 2, 3, owner.localizationManager.GetString("button", "createRestorePoint", LocalizationManager.Text("CREATE POINT", "CRIAR PONTO")), new Color(0.85f, 0.62f, 0.02f, 1f)))
+                {
+                    owner.CreateRestorePointFromName(restorePointName);
+                    restorePointName = "";
+                    ClampSelectedIndex();
+                }
+
+                Rect secondaryRow = new Rect(footerRect.x, footerRect.y + 61f, footerRect.width, 36f);
+                if (DrawColoredButtonInRow(secondaryRow, 0, 3, owner.localizationManager.GetString("button", "restartMenu", LocalizationManager.Text("RESTART MENU", "REINICIAR MENU")), new Color(0.08f, 0.35f, 0.65f, 1f)))
+                    owner.OnRestartLevel1Click();
+                if (DrawColoredButtonInRow(secondaryRow, 1, 3, owner.localizationManager.GetString("button", "openSaveFolder", LocalizationManager.Text("OPEN SAVE", "ABRIR SAVE")), new Color(0.08f, 0.35f, 0.65f, 1f)))
+                    owner.OnOpenSaveFolderClick();
+                if (DrawColoredButtonInRow(secondaryRow, 2, 3, owner.localizationManager.GetString("button", "openBackupFolder", LocalizationManager.Text("OPEN BACKUP", "ABRIR BACKUP")), new Color(0.08f, 0.35f, 0.65f, 1f)))
+                    owner.OnOpenBackupFolderClick();
+            }
+
+            private void DrawRestorePointNameField()
+            {
+                string placeholder = owner.localizationManager.GetString("label", "restorePointName", LocalizationManager.Text("Restore Point Name (optional)", "Nome do ponto de restauração (opcional)"));
+                Rect fieldRect = GUILayoutUtility.GetRect(0f, 32f, GUILayout.ExpandWidth(true));
+                GUI.SetNextControlName("BackupSaveRestorePointName");
+                restorePointName = GUI.TextField(fieldRect, restorePointName, 30, fieldStyle);
+                bool fieldFocused = GUI.GetNameOfFocusedControl() == "BackupSaveRestorePointName";
+                if (string.IsNullOrEmpty(restorePointName) && !fieldFocused)
+                    GUI.Label(fieldRect, placeholder, placeholderFieldStyle);
+            }
+
+            private void DrawMeshsaveSection()
+            {
+                DrawSectionHeader(owner.localizationManager.GetString("header", "deleteMeshsave", LocalizationManager.Text("DELETE MESHSAVE FILE", "DELETAR ARQUIVO MESHSAVE")));
+                GUILayout.Label(owner.localizationManager.GetString("text", "meshsaveInfo", LocalizationManager.Text("Delete the meshsave.txt file to restore the vehicle format.", "Delete o arquivo meshsave.txt para restaurar o formato do veículo.")), noteStyle);
+                Rect deleteMeshsaveRect = GUILayoutUtility.GetRect(0f, 36f, GUILayout.ExpandWidth(true));
+                if (DrawOutlinedButton(deleteMeshsaveRect, owner.localizationManager.GetString("button", "deleteMeshsave", LocalizationManager.Text("DELETE MESHSAVE.TXT", "DELETAR MESHSAVE.TXT")), deleteButtonStyle, themeColor))
+                    owner.OnDeleteMeshSaveClick();
+
+                bool autoDelete = owner.GetAutoDeleteMeshsave();
+                bool newAutoDelete = DrawLargeToggle(autoDelete, owner.localizationManager.GetString("label", "autoDeleteMeshsave", LocalizationManager.Text("Delete meshsave automatically", "Deletar meshsave automaticamente")));
+                if (newAutoDelete != autoDelete)
+                    owner.SetAutoDeleteMeshsave(newAutoDelete);
+            }
+
+            private void DrawImportSection()
+            {
+                if (!showImportSave && !showExternalImport)
+                    return;
+
+                DrawSectionHeader(owner.localizationManager.GetString("header", "importSave", LocalizationManager.Text("IMPORT SAVE", "IMPORTAR SAVE")));
+                if (showImportSave)
+                {
+                    GUILayout.Label(owner.localizationManager.GetString("text", "importInfo", LocalizationManager.Text("Import your save from My Summer Car to My Winter Car with backup.", "Importe seu save de My Summer Car para My Winter Car com backup.")), noteStyle);
+                    Rect importSaveRect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+                    if (DrawOutlinedButton(importSaveRect, owner.localizationManager.GetString("button", "importSave", LocalizationManager.Text("IMPORT SAVE FROM MY SUMMER CAR", "IMPORTAR SAVE DO MY SUMMER CAR")), buttonStyle, themeColor))
+                    {
+                        owner.OnImportSaveClick();
+                        RefreshData();
+                    }
+                }
+
+                if (showExternalImport)
+                {
+                    GUILayout.Label(owner.localizationManager.GetString("text", "importExternalPath", LocalizationManager.Text("Import all backups from the external Backup folder.", "Importar todos os backups da pasta Backup externa.")), noteStyle);
+                    Rect importAllRect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+                    if (DrawOutlinedButton(importAllRect, owner.localizationManager.GetString("button", "importAllBackups", LocalizationManager.Text("IMPORT ALL BACKUPS", "IMPORTAR TODOS OS BACKUPS")), buttonStyle, themeColor))
+                    {
+                        owner.OnImportAllExternalBackupsClick();
+                        RefreshData();
+                    }
+                }
+            }
+
+            private void DrawFooterActions(Rect footerRect)
+            {
+                Rect infoRect = new Rect(footerRect.x, footerRect.y, footerRect.width, 54f);
+                Rect closeRect = new Rect(footerRect.x, footerRect.y + 61f, footerRect.width, 36f);
+
+                if (DrawOutlinedButton(infoRect, owner.localizationManager.GetString("button", "info", LocalizationManager.Text("INFORMATION", "INFORMAÇÕES")), buttonStyle, themeColor))
+                    ShowDetail(GetInfoTitle(), BuildInfoText());
+                if (DrawOutlinedButton(closeRect, owner.localizationManager.GetString("button", "close", LocalizationManager.Text("CLOSE", "FECHAR")), buttonStyle, themeColor))
+                    isVisible = false;
+            }
+
+            private void ShowDetail(string title, string text)
+            {
+                detailTitle = title;
+                detailText = text;
+                detailScroll = Vector2.zero;
+            }
+
+            private void DrawDetailOverlay(Rect panelRect)
+            {
+                if (string.IsNullOrEmpty(detailText))
+                    return;
+
+                float detailWidth = Mathf.Min(980f, panelRect.width - 80f);
+                float detailHeight = Mathf.Min(360f, panelRect.height - 70f);
+                Rect detailRect = new Rect(panelRect.x + (panelRect.width - detailWidth) * 0.5f, panelRect.y + (panelRect.height - detailHeight) * 0.5f, detailWidth, detailHeight);
+                DrawBorderedPanel(detailRect, themeColor, 3f);
+                GUILayout.BeginArea(new Rect(detailRect.x + 18f, detailRect.y + 14f, detailRect.width - 36f, detailRect.height - 28f));
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(detailTitle, titleStyle, GUILayout.Height(50f), GUILayout.ExpandWidth(true));
+                if (GUILayout.Button("X", buttonStyle, GUILayout.Width(42f), GUILayout.Height(38f)))
+                    detailText = "";
+                GUILayout.EndHorizontal();
+                detailScroll = GUILayout.BeginScrollView(detailScroll, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
+                GUILayout.Label(detailText, detailTextStyle, GUILayout.ExpandWidth(true));
+                GUILayout.EndScrollView();
+                GUILayout.EndArea();
+            }
+
+            private string GetInfoTitle()
+            {
+                return owner.localizationManager.GetString("header", "titleInfo", LocalizationManager.Text("MOD INFORMATION", "INFORMAÇÕES DO MOD"));
+            }
+
+            private string BuildInfoText()
+            {
+                string text = owner.localizationManager.GetString("text", "infoTitle", LocalizationManager.Text("<b>BackupSave - Backup System</b>", "<b>BackupSave - Sistema de Backup</b>")) + "\n\n";
+                text += owner.localizationManager.GetString("text", "infoOverview", LocalizationManager.Text(
+                    "Creates compressed backups of your save and keeps restore tools available directly from the main menu.",
+                    "Cria backups compactados do seu save e deixa as ferramentas de restauração direto no menu principal.")) + "\n\n";
+
+                text += owner.localizationManager.GetString("text", "infoAutoBackup", LocalizationManager.Text(
+                    "- Automatic backup: created when the save is loaded, preserving the current game state before you continue.",
+                    "- Backup automático: criado quando o save é carregado, guardando o estado atual antes de continuar.")) + "\n";
+                text += owner.localizationManager.GetString("text", "infoAutoRestore", LocalizationManager.Text(
+                    "- Auto restore: detects when the save disappears after death and restores according to the selected mode.",
+                    "- Restauração automática: detecta quando o save some após a morte e restaura conforme o modo escolhido.")) + "\n";
+                text += owner.localizationManager.GetString("text", "infoRestorePoints", LocalizationManager.Text(
+                    "- Restore points: permanent saves for important moments. They are not removed by the backup limit.",
+                    "- Pontos de restauração: saves permanentes para momentos importantes. Eles não entram no limite de backups.")) + "\n";
+                text += owner.localizationManager.GetString("text", "infoLimitControl", LocalizationManager.Text(
+                    "- Backup limit: removes older automatic backups when the selected limit is exceeded. Use 0 for unlimited.",
+                    "- Limite de backups: remove backups automáticos antigos quando passa do limite. Use 0 para ilimitado.")) + "\n";
+                text += owner.localizationManager.GetString("text", "infoPrefixName", LocalizationManager.Text(
+                    "- Name prefix: adds the character first name to new backups, useful when testing different saves.",
+                    "- Prefixo de nome: adiciona o primeiro nome do personagem aos backups, útil para separar saves diferentes.")) + "\n";
+                text += owner.localizationManager.GetString("text", "infoMeshsave", LocalizationManager.Text(
+                    "- Meshsave tool: deletes meshsave.txt so the game can rebuild the vehicle format when needed.",
+                    "- Ferramenta meshsave: deleta meshsave.txt para o jogo recriar o formato do veículo quando precisar.")) + "\n";
+                if (ModLoader.CurrentGame == Game.MySummerCar)
+                    text += owner.localizationManager.GetString("text", "infoImportSaveBackuper", LocalizationManager.Text(
+                        "- SaveBackuper import: imports old backups from AppData/LocalLow/Amistech/Backup into the new ZIP system.",
+                        "- Importação SaveBackuper: importa backups antigos de AppData/LocalLow/Amistech/Backup para o novo sistema ZIP.")) + "\n";
+                if (ModLoader.CurrentGame == Game.MyWinterCar)
+                    text += owner.localizationManager.GetString("text", "infoImportSaveMWC", LocalizationManager.Text(
+                        "- MSC to MWC import: copies the My Summer Car save to My Winter Car and creates a safety backup first when possible.",
+                        "- Importação MSC para MWC: copia o save do My Summer Car para My Winter Car e cria backup de segurança antes quando possível.")) + "\n";
+                text += "\n" + owner.localizationManager.GetString("text", "infoFolders", LocalizationManager.Text(
+                    "Use OPEN SAVE for the original game save folder and OPEN BACKUP for BackupSave backups.",
+                    "Use ABRIR SAVE para a pasta original do jogo e ABRIR BACKUP para os backups do BackupSave."));
+                return text;
+            }
+
+            private bool DrawColoredButtonInRow(Rect rowRect, int index, int count, string text, Color color)
+            {
+                const float gap = 4f;
+                float width = (rowRect.width - gap * (count - 1)) / count;
+                Rect buttonRect = new Rect(rowRect.x + index * (width + gap), rowRect.y, width, rowRect.height);
+
+                return DrawOutlinedButton(buttonRect, text, buttonStyle, color);
+            }
+
+            private bool DrawOutlinedButton(Rect rect, string text, GUIStyle style, Color fillColor)
+            {
+                GUI.DrawTexture(rect, whiteTexture);
+                Rect innerRect = new Rect(rect.x + 2f, rect.y + 2f, rect.width - 4f, rect.height - 4f);
+                Color oldBackground = GUI.backgroundColor;
+                GUI.backgroundColor = fillColor;
+                bool clicked = GUI.Button(innerRect, text, style);
+                GUI.backgroundColor = oldBackground;
+                return clicked;
+            }
+
+            private int DrawStepper(int value, int minValue, int maxValue, string displayText, bool wrap)
+            {
+                int result = value;
+
+                Rect stepperRect = GUILayoutUtility.GetRect(0f, 38f, GUILayout.ExpandWidth(true));
+                Rect leftRect = new Rect(stepperRect.x, stepperRect.y + 1f, 48f, 36f);
+                Rect rightRect = new Rect(stepperRect.xMax - 48f, stepperRect.y + 1f, 48f, 36f);
+                Rect valueRect = new Rect(leftRect.xMax + 4f, stepperRect.y + 1f, stepperRect.width - 104f, 36f);
+
+                if (DrawOutlinedButton(leftRect, "<", stepperButtonStyle, themeColor))
+                    result--;
+
+                DrawBorderedPanel(valueRect, themeColor, 2f);
+                GUI.Label(valueRect, displayText, stepperValueStyle);
+
+                if (DrawOutlinedButton(rightRect, ">", stepperButtonStyle, themeColor))
+                    result++;
+
+                if (result < minValue)
+                    return wrap ? maxValue : minValue;
+                if (result > maxValue)
+                    return wrap ? minValue : maxValue;
+                return result;
+            }
+
+            private bool DrawLargeToggle(bool value, string text)
+            {
+                Rect rect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+                Rect boxRect = new Rect(rect.x, rect.y + 5f, 24f, 24f);
+                Rect labelRect = new Rect(rect.x + 34f, rect.y, rect.width - 34f, rect.height);
+
+                DrawBorderedPanel(boxRect, themeDarkColor, 2f);
+                if (value)
+                {
+                    Color oldColor = GUI.color;
+                    GUI.color = Color.yellow;
+                    GUI.DrawTexture(new Rect(boxRect.x + 5f, boxRect.y + 5f, boxRect.width - 10f, boxRect.height - 10f), whiteTexture);
+                    GUI.color = oldColor;
+                }
+                GUI.Label(labelRect, text, noteStyle);
+
+                return GUI.Button(rect, GUIContent.none, GUIStyle.none) ? !value : value;
+            }
+
+            private void DrawBorderedPanel(Rect rect, Color fill, float border)
+            {
+                GUI.DrawTexture(rect, whiteTexture);
+                Color oldColor = GUI.color;
+                GUI.color = fill;
+                GUI.DrawTexture(new Rect(rect.x + border, rect.y + border, rect.width - border * 2f, rect.height - border * 2f), whiteTexture);
+                GUI.color = oldColor;
+            }
+
+            private void DrawSectionHeader(string text)
+            {
+                GUILayout.Label(text, sectionHeaderStyle, GUILayout.Height(30f), GUILayout.ExpandWidth(true));
+            }
+
+            private string GetSelectedItem()
+            {
+                string[] items = owner.GetMenuPanelBackupItems();
+                if (items.Length == 0)
+                    return "";
+                ClampSelectedIndex(items);
+                return items[selectedIndex];
+            }
+
+            private void ClampSelectedIndex()
+            {
+                ClampSelectedIndex(owner.GetMenuPanelBackupItems());
+            }
+
+            private void ClampSelectedIndex(string[] items)
+            {
+                if (items == null || items.Length == 0)
+                {
+                    selectedIndex = 0;
+                    return;
+                }
+                selectedIndex = Mathf.Clamp(selectedIndex, 0, items.Length - 1);
+            }
+
+            private void InitStyles()
+            {
+                if (titleStyle != null)
+                    return;
+
+                themeColor = ModLoader.CurrentGame == Game.MySummerCar
+                    ? new Color(0.43f, 0.11f, 0.04f, 0.98f)
+                    : new Color(0.08f, 0.34f, 0.42f, 0.98f);
+                themeDarkColor = ModLoader.CurrentGame == Game.MySummerCar
+                    ? new Color(0.25f, 0.07f, 0.02f, 0.98f)
+                    : new Color(0.04f, 0.21f, 0.27f, 0.98f);
+
+                whiteTexture = MakeTexture(Color.white);
+                overlayTexture = MakeTexture(new Color(0f, 0f, 0f, 1f));
+                selectedTexture = MakeTexture(ModLoader.CurrentGame == Game.MySummerCar ? new Color(0.62f, 0.22f, 0.03f, 1f) : new Color(0.02f, 0.55f, 0.72f, 1f));
+                listTexture = MakeTexture(themeColor);
+                sectionTexture = MakeTexture(themeColor);
+                rowTexture = MakeTexture(themeDarkColor);
+                rowHoverTexture = MakeTexture(ModLoader.CurrentGame == Game.MySummerCar ? new Color(0.50f, 0.15f, 0.03f, 1f) : new Color(0.06f, 0.42f, 0.52f, 1f));
+                actionTexture = MakeTexture(themeColor);
+                scrollbarTrackTexture = MakeTexture(ModLoader.CurrentGame == Game.MySummerCar ? new Color(0.12f, 0.03f, 0.01f, 1f) : new Color(0.02f, 0.13f, 0.17f, 1f));
+                scrollbarThumbTexture = MakeTexture(ModLoader.CurrentGame == Game.MySummerCar ? new Color(0.72f, 0.22f, 0.03f, 1f) : new Color(0.02f, 0.62f, 0.78f, 1f));
+                ApplyScrollbarStyle();
+
+                listBoxStyle = new GUIStyle(GUI.skin.box);
+                listBoxStyle.normal.background = listTexture;
+                listBoxStyle.padding = new RectOffset(6, 6, 6, 6);
+
+                titleStyle = new GUIStyle(GUI.skin.label);
+                titleStyle.fontSize = 34;
+                titleStyle.fontStyle = FontStyle.BoldAndItalic;
+                titleStyle.alignment = TextAnchor.MiddleCenter;
+                titleStyle.normal.textColor = Color.yellow;
+
+                titleShadowStyle = new GUIStyle(titleStyle);
+                titleShadowStyle.normal.textColor = Color.black;
+
+                sectionHeaderStyle = new GUIStyle(GUI.skin.label);
+                sectionHeaderStyle.fontSize = 16;
+                sectionHeaderStyle.fontStyle = FontStyle.BoldAndItalic;
+                sectionHeaderStyle.alignment = TextAnchor.MiddleCenter;
+                sectionHeaderStyle.normal.textColor = Color.yellow;
+                sectionHeaderStyle.normal.background = sectionTexture;
+
+                labelStyle = new GUIStyle(GUI.skin.label);
+                labelStyle.fontSize = 14;
+                labelStyle.fontStyle = FontStyle.Bold;
+                labelStyle.richText = true;
+                labelStyle.normal.textColor = Color.white;
+
+                noteStyle = new GUIStyle(GUI.skin.label);
+                noteStyle.fontSize = 14;
+                noteStyle.wordWrap = true;
+                noteStyle.richText = true;
+                noteStyle.normal.textColor = Color.white;
+
+                buttonStyle = new GUIStyle(GUI.skin.button);
+                buttonStyle.fontSize = 15;
+                buttonStyle.fontStyle = FontStyle.BoldAndItalic;
+                buttonStyle.alignment = TextAnchor.MiddleCenter;
+                buttonStyle.richText = true;
+                buttonStyle.normal.textColor = Color.yellow;
+                buttonStyle.hover.textColor = Color.yellow;
+                buttonStyle.active.textColor = Color.yellow;
+                buttonStyle.normal.background = actionTexture;
+                buttonStyle.hover.background = rowHoverTexture;
+                buttonStyle.active.background = selectedTexture;
+
+                deleteButtonStyle = new GUIStyle(buttonStyle);
+                deleteButtonStyle.normal.textColor = Color.red;
+                deleteButtonStyle.hover.textColor = Color.red;
+                deleteButtonStyle.active.textColor = Color.red;
+
+                itemStyle = new GUIStyle(GUI.skin.button);
+                itemStyle.fontSize = 15;
+                itemStyle.alignment = TextAnchor.MiddleLeft;
+                itemStyle.richText = true;
+                itemStyle.normal.textColor = Color.white;
+                itemStyle.hover.textColor = Color.yellow;
+                itemStyle.active.textColor = Color.yellow;
+                itemStyle.normal.background = rowTexture;
+                itemStyle.hover.background = rowHoverTexture;
+                itemStyle.active.background = selectedTexture;
+
+                selectedItemStyle = new GUIStyle(itemStyle);
+                selectedItemStyle.normal.background = selectedTexture;
+                selectedItemStyle.hover.background = selectedTexture;
+                selectedItemStyle.active.background = selectedTexture;
+
+                fieldStyle = new GUIStyle(GUI.skin.textField);
+                fieldStyle.fontSize = 14;
+                fieldStyle.alignment = TextAnchor.MiddleLeft;
+                fieldStyle.normal.textColor = Color.white;
+                fieldStyle.hover.textColor = Color.white;
+                fieldStyle.active.textColor = Color.white;
+                fieldStyle.normal.background = rowTexture;
+                fieldStyle.hover.background = rowTexture;
+                fieldStyle.active.background = rowTexture;
+
+                placeholderFieldStyle = new GUIStyle(fieldStyle);
+                placeholderFieldStyle.normal.textColor = new Color(1f, 1f, 1f, 0.55f);
+                placeholderFieldStyle.hover.textColor = placeholderFieldStyle.normal.textColor;
+                placeholderFieldStyle.active.textColor = placeholderFieldStyle.normal.textColor;
+                placeholderFieldStyle.padding = new RectOffset(fieldStyle.padding.left + 4, fieldStyle.padding.right, fieldStyle.padding.top, fieldStyle.padding.bottom);
+
+                stepperButtonStyle = new GUIStyle(buttonStyle);
+                stepperButtonStyle.richText = false;
+                stepperButtonStyle.fontSize = 22;
+                stepperButtonStyle.fontStyle = FontStyle.Bold;
+
+                stepperValueStyle = new GUIStyle(fieldStyle);
+                stepperValueStyle.alignment = TextAnchor.MiddleCenter;
+                stepperValueStyle.fontSize = 15;
+                stepperValueStyle.fontStyle = FontStyle.Bold;
+                stepperValueStyle.normal.textColor = Color.white;
+
+                detailTextStyle = new GUIStyle(noteStyle);
+                detailTextStyle.fontSize = 16;
+                detailTextStyle.richText = true;
+            }
+
+            private void ApplyScrollbarStyle()
+            {
+                GUI.skin.verticalScrollbar.normal.background = scrollbarTrackTexture;
+                GUI.skin.verticalScrollbar.hover.background = scrollbarTrackTexture;
+                GUI.skin.verticalScrollbar.active.background = scrollbarTrackTexture;
+                GUI.skin.verticalScrollbar.fixedWidth = 14f;
+                GUI.skin.verticalScrollbar.margin = new RectOffset(4, 0, 0, 0);
+                GUI.skin.verticalScrollbar.padding = new RectOffset(2, 2, 2, 2);
+
+                GUI.skin.verticalScrollbarThumb.normal.background = scrollbarThumbTexture;
+                GUI.skin.verticalScrollbarThumb.hover.background = selectedTexture;
+                GUI.skin.verticalScrollbarThumb.active.background = selectedTexture;
+                GUI.skin.verticalScrollbarThumb.fixedWidth = 10f;
+
+                GUI.skin.horizontalScrollbar.normal.background = scrollbarTrackTexture;
+                GUI.skin.horizontalScrollbar.hover.background = scrollbarTrackTexture;
+                GUI.skin.horizontalScrollbar.active.background = scrollbarTrackTexture;
+                GUI.skin.horizontalScrollbar.fixedHeight = 12f;
+                GUI.skin.horizontalScrollbar.margin = new RectOffset(0, 0, 4, 0);
+                GUI.skin.horizontalScrollbar.padding = new RectOffset(2, 2, 2, 2);
+
+                GUI.skin.horizontalScrollbarThumb.normal.background = scrollbarThumbTexture;
+                GUI.skin.horizontalScrollbarThumb.hover.background = selectedTexture;
+                GUI.skin.horizontalScrollbarThumb.active.background = selectedTexture;
+                GUI.skin.horizontalScrollbarThumb.fixedHeight = 8f;
+            }
+
+            private Texture2D MakeTexture(Color color)
+            {
+                Texture2D texture = new Texture2D(1, 1);
+                texture.SetPixel(0, 0, color);
+                texture.Apply();
+                return texture;
+            }
+
+            private void OnDestroy()
+            {
+                DestroyTexture(overlayTexture);
+                DestroyTexture(selectedTexture);
+                DestroyTexture(listTexture);
+                DestroyTexture(sectionTexture);
+                DestroyTexture(whiteTexture);
+                DestroyTexture(rowTexture);
+                DestroyTexture(rowHoverTexture);
+                DestroyTexture(actionTexture);
+                DestroyTexture(scrollbarTrackTexture);
+                DestroyTexture(scrollbarThumbTexture);
+            }
+
+            private void DestroyTexture(Texture2D texture)
+            {
+                if (texture != null)
+                    UnityEngine.Object.Destroy(texture);
+            }
+
+            private class MenuButtonClickHandler : MonoBehaviour
+            {
+                private Action callback;
+                private Vector3 originalScale;
+
+                public void SetCallback(Action clickCallback)
+                {
+                    callback = clickCallback;
+                    originalScale = transform.localScale;
+                }
+
+                private void Start()
+                {
+                    originalScale = transform.localScale;
+                }
+
+                private void OnMouseEnter()
+                {
+                    if (originalScale == Vector3.zero)
+                        originalScale = transform.localScale;
+                    transform.localScale = originalScale * 0.95f;
+                }
+
+                private void OnMouseExit()
+                {
+                    if (originalScale != Vector3.zero)
+                        transform.localScale = originalScale;
+                }
+
+                private void OnMouseDown()
+                {
+                    if (callback != null)
+                        callback();
+                }
+            }
         }
 
         private void Mod_OnLoad()
@@ -628,8 +1439,6 @@ namespace BackupSave
                 if (!string.IsNullOrEmpty(characterName))
                 {
                     autoRestoreManager.SetCharacterFirstName(characterName);
-                    string prefixMessage = LocalizationManager.Text("[BackupSave] Character name prefix enabled: ", "[BackupSave] Prefixo do personagem ativado: ");
-                    ModConsole.Log("<color=#00ff00>" + localizationManager.GetString("log", "prefixEnabled", prefixMessage) + characterName + "</color>");
                 }
             }
             autoRestoreManager.InitializeAutoRestore(gameFolder, "", GetBackupLimit());
@@ -641,39 +1450,19 @@ namespace BackupSave
 
             string gameFolder = GetGameSaveFolder();
             int currentMode = GetAutoRestoreMode();
-            if (lastAutoRestoreMode >= 0 && currentMode != lastAutoRestoreMode)
-            {
-                string logColor = currentMode == 0 ? "#ff0000" : "#00ff00";
-                string logKey = "";
-                string defaultValue = "";
-                
-                switch (currentMode)
-                {
-                    case 0: 
-                        logKey = "autoRestoreModeDisabled";
-                        defaultValue = LocalizationManager.Text("[BackupSave] Automatic Restoration: Disabled", "[BackupSave] Restauração Automática: Desligada");
-                        break;
-                    case 1: 
-                        logKey = "autoRestoreModeRestoreAll";
-                        defaultValue = LocalizationManager.Text("[BackupSave] Automatic Restoration: Restore All", "[BackupSave] Restauração Automática: Restaurar Tudo");
-                        break;
-                    case 2: 
-                        logKey = "autoRestoreModeRestoreGraveyard";
-                        defaultValue = LocalizationManager.Text("[BackupSave] Automatic Restoration: Restore keeping gravestones", "[BackupSave] Restauração Automática: Restaurar mantendo as lápides");
-                        break;
-                }
-                
-                string logMessage = localizationManager.GetString("log", logKey, defaultValue);
-                ModConsole.Log("<color=" + logColor + ">" + logMessage + "</color>");
-            }
-            lastAutoRestoreMode = currentMode;
             autoRestoreManager.SetAutoRestoreMode(currentMode);
             autoRestoreManager.MonitorPlayerDeath(gameFolder);
-            if (UnityEngine.Application.loadedLevel != 1)
+            if (UnityEngine.Application.loadedLevel == 1)
+            {
+                EnsureMenuBackupPanel();
+            }
+            else
             {
                 autoMeshsaveDeleteAttemptedInMenu = false;
+                if (menuBackupPanel != null)
+                    menuBackupPanel.Hide();
             }
-            else if (GetAutoDeleteMeshsave() && !autoMeshsaveDeleteAttemptedInMenu)
+            if (UnityEngine.Application.loadedLevel == 1 && GetAutoDeleteMeshsave() && !autoMeshsaveDeleteAttemptedInMenu)
             {
                 autoMeshsaveDeleteAttemptedInMenu = true;
                 backupManager.DeleteMeshSaveFile(gameFolder);
@@ -688,6 +1477,7 @@ namespace BackupSave
             string gameFolder = GetGameSaveFolder();
             autoMeshsaveDeleteAttemptedInMenu = false;
             autoRestoreManager.CompleteAutoRestore(gameFolder);
+            EnsureMenuBackupPanel();
         }
 
     }

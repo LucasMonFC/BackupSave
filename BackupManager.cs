@@ -1,4 +1,4 @@
-using MSCLoader;
+﻿using MSCLoader;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -249,7 +249,7 @@ namespace BackupSave
             string timestamp = DateTime.Now.ToString("dd.MM.yyyy HH-mm-ss");
             string prefix = string.IsNullOrEmpty(characterFirstName) ? "" : characterFirstName + " - ";
             string backupFolderName = prefix + (string.IsNullOrEmpty(customBackupName) ? timestamp : customBackupName + " - " + timestamp);
-            return CreateBackupOrRestorePoint(GetBackupPath(gameFolder, backupFolderName), gameFolder, backupFolderName, false, backupLimit);
+            return CreateBackupOrRestorePoint(GetBackupPath(gameFolder, backupFolderName), gameFolder, false, backupLimit);
         }
 
         public string CreateRestorePoint(string gameFolder, string restorePointName)
@@ -268,10 +268,10 @@ namespace BackupSave
             }
             string timestamp = DateTime.Now.ToString("dd.MM.yyyy HH-mm-ss");
             string rpName = string.IsNullOrEmpty(restorePointName) ? timestamp : restorePointName + " - " + timestamp;
-            return CreateBackupOrRestorePoint(GetRestorePointPath(gameFolder, rpName), gameFolder, rpName, true, 0) ? rpName : null;
+            return CreateBackupOrRestorePoint(GetRestorePointPath(gameFolder, rpName), gameFolder, true, 0) ? rpName : null;
         }
 
-        private bool CreateBackupOrRestorePoint(string folderPath, string gameFolder, string name, bool isRestorePoint, int backupLimit)
+        private bool CreateBackupOrRestorePoint(string folderPath, string gameFolder, bool isRestorePoint, int backupLimit)
         {
             try
             {
@@ -279,16 +279,6 @@ namespace BackupSave
                     Directory.Delete(folderPath, true);
 
                 CreateZipFromSaveFiles(GetSavePath(gameFolder), GetZipPath(folderPath));
-                string typeLog = isRestorePoint
-                    ? LocalizationManager.Text("[BackupSave] Restore point created successfully - Name: ", "[BackupSave] Ponto de restauração criado com sucesso - Nome: ")
-                    : LocalizationManager.Text("[BackupSave] Backup created successfully - Name: ", "[BackupSave] Backup criado com sucesso - Nome: ");
-                if (localizationManager != null)
-                {
-                    typeLog = isRestorePoint
-                        ? localizationManager.GetString("log", "restorePointCreated", typeLog)
-                        : localizationManager.GetString("log", "backupCreated", typeLog);
-                }
-                ModConsole.Log("<color=#00ff00>" + typeLog + name + "</color>");
                 if (!isRestorePoint) ManageBackupLimit(gameFolder, backupLimit);
                 return true;
             }
@@ -325,13 +315,6 @@ namespace BackupSave
                         directory.Delete(true);
                     else
                         list[i].Delete();
-
-                    string deletedMsg = LocalizationManager.Text("[BackupSave] Old backup deleted: ", "[BackupSave] Backup antigo deletado: ");
-                    if (localizationManager != null)
-                    {
-                        deletedMsg = localizationManager.GetString("log", "oldBackupDeleted", deletedMsg);
-                    }
-                    ModConsole.Log("<color=#ffaa00>" + deletedMsg + GetItemNameWithoutZip(list[i].Name) + "</color>");
                 }
                 catch
                 {
@@ -343,12 +326,6 @@ namespace BackupSave
                     ModConsole.Error(errorMsg + GetItemNameWithoutZip(list[i].Name));
                 }
             }
-            string limitMsg = LocalizationManager.Text("[BackupSave] Backup limit applied. Keeping only the ", "[BackupSave] Limite de backup aplicado. Mantendo apenas os ");
-            if (localizationManager != null)
-            {
-                limitMsg = localizationManager.GetString("log", "backupLimitApplied", limitMsg);
-            }
-            ModConsole.Log("<color=#ffaa00>" + limitMsg + backupLimit + LocalizationManager.Text(" most recent.</color>", " mais recentes.</color>"));
         }
 
         public bool RestoreLatestBackupAuto(string gameFolder, bool preserveGraveyard = false)
@@ -358,28 +335,22 @@ namespace BackupSave
             List<FileSystemInfo> backups = GetBackupItems(GetBackupPath(gameFolder), true);
             if (backups.Count == 0) return false;
             backups.Sort((a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
-            return RestoreBackup(GetSavePath(gameFolder), backups[0].FullName, GetItemNameWithoutZip(backups[0].Name), preserveGraveyard);
+            return RestoreBackup(GetSavePath(gameFolder), backups[0].FullName, preserveGraveyard);
         }
 
         public bool RestoreBackupByName(string gameFolder, string backupName)
         {
             string backupPath = GetBackupPath(gameFolder, backupName);
             string resolvedPath = ResolveBackupItemPath(backupPath);
-            return BackupItemExists(backupPath) ? RestoreBackup(GetSavePath(gameFolder), resolvedPath, backupName, false) : false;
+            return BackupItemExists(backupPath) ? RestoreBackup(GetSavePath(gameFolder), resolvedPath, false) : false;
         }
 
-        private bool RestoreBackup(string savePath, string backupPath, string backupName, bool preserveGraveyard)
+        private bool RestoreBackup(string savePath, string backupPath, bool preserveGraveyard)
         {
             try
             {
                 DeleteSaveFiles(savePath, preserveGraveyard);
                 CopyOrExtractBackupItem(backupPath, savePath, preserveGraveyard);
-                string restoreMsg = LocalizationManager.Text("[BackupSave] Backup restored successfully: ", "[BackupSave] Backup restaurado com sucesso: ");
-                if (localizationManager != null)
-                {
-                    restoreMsg = localizationManager.GetString("log", "backupRestored", restoreMsg);
-                }
-                ModConsole.Log("<color=#00ff00>" + restoreMsg + backupName + "</color>");
                 return true;
             }
             catch (Exception ex)
@@ -394,7 +365,7 @@ namespace BackupSave
             }
         }
 
-        private bool DeleteBackupOrRestorePoint(string itemPath, string itemName, bool isRestorePoint)
+        private bool DeleteBackupOrRestorePoint(string itemPath, bool isRestorePoint)
         {
             try
             {
@@ -405,17 +376,6 @@ namespace BackupSave
                     File.Delete(resolvedPath);
                 else
                     return false;
-
-                string deleteMsg = isRestorePoint
-                    ? LocalizationManager.Text("[BackupSave] Restore point deleted: ", "[BackupSave] Ponto de restauração deletado: ")
-                    : LocalizationManager.Text("[BackupSave] Backup deleted: ", "[BackupSave] Backup deletado: ");
-                if (localizationManager != null)
-                {
-                    deleteMsg = isRestorePoint
-                        ? localizationManager.GetString("log", "restorePointDeleted", deleteMsg)
-                        : localizationManager.GetString("log", "backupDeleted", deleteMsg);
-                }
-                ModConsole.Log("<color=#ffaa00>" + deleteMsg + itemName + "</color>");
                 return true;
             }
             catch (Exception ex)
@@ -431,16 +391,16 @@ namespace BackupSave
             }
         }
 
-        public bool DeleteBackupByName(string gameFolder, string backupName) => DeleteBackupOrRestorePoint(GetBackupPath(gameFolder, backupName), backupName, false);
+        public bool DeleteBackupByName(string gameFolder, string backupName) => DeleteBackupOrRestorePoint(GetBackupPath(gameFolder, backupName), false);
 
         public bool RestoreRestorePointByName(string gameFolder, string restorePointName)
         {
             string rpPath = GetRestorePointPath(gameFolder, restorePointName);
             string resolvedPath = ResolveBackupItemPath(rpPath);
-            return BackupItemExists(rpPath) ? RestoreBackup(GetSavePath(gameFolder), resolvedPath, restorePointName, false) : false;
+            return BackupItemExists(rpPath) ? RestoreBackup(GetSavePath(gameFolder), resolvedPath, false) : false;
         }
 
-        public bool DeleteRestorePointByName(string gameFolder, string restorePointName) => DeleteBackupOrRestorePoint(GetRestorePointPath(gameFolder, restorePointName), restorePointName, true);
+        public bool DeleteRestorePointByName(string gameFolder, string restorePointName) => DeleteBackupOrRestorePoint(GetRestorePointPath(gameFolder, restorePointName), true);
 
         public bool DeleteMeshSaveFile(string gameFolder)
         {
@@ -449,12 +409,6 @@ namespace BackupSave
                 string meshSaveFile = Path.Combine(GetSavePath(gameFolder), "meshsave.txt");
                 if (!File.Exists(meshSaveFile)) return false;
                 File.Delete(meshSaveFile);
-                string deleteMsg = LocalizationManager.Text("[BackupSave] Meshsave.txt file successfully deleted!", "[BackupSave] Arquivo meshsave.txt deletado com sucesso!");
-                if (localizationManager != null)
-                {
-                    deleteMsg = localizationManager.GetString("log", "meshsaveDeleted", deleteMsg);
-                }
-                ModConsole.Log("<color=#00ff00>" + deleteMsg + "</color>");
                 return true;
             }
             catch (Exception ex)
@@ -641,9 +595,27 @@ namespace BackupSave
         {
             try
             {
-                if (!Directory.Exists(externalBackupPath)) return false;
                 string backupPath = GetBackupPath("My Summer Car", importedName);
-                CreateZipFromSaveFiles(externalBackupPath, GetZipPath(backupPath));
+                string zipPath = GetZipPath(backupPath);
+
+                if (Directory.Exists(externalBackupPath))
+                {
+                    CreateZipFromSaveFiles(externalBackupPath, zipPath);
+                }
+                else if (File.Exists(externalBackupPath) && Path.GetExtension(externalBackupPath).Equals(ZIP_EXTENSION, StringComparison.OrdinalIgnoreCase))
+                {
+                    string parent = Path.GetDirectoryName(zipPath);
+                    if (!Directory.Exists(parent))
+                        Directory.CreateDirectory(parent);
+                    if (File.Exists(zipPath))
+                        File.Delete(zipPath);
+                    File.Copy(externalBackupPath, zipPath);
+                }
+                else
+                {
+                    return false;
+                }
+
                 if (manageLimit)
                     ManageBackupLimit("My Summer Car", backupLimit);
                 return true;

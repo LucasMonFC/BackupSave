@@ -1,47 +1,91 @@
 # BackupSave
 
-Mod de backup automático para My Summer Car e My Winter Car com restauração inteligente após morte.
+Mod de backup e restauração para **My Summer Car** e **My Winter Car**.
 
-## O que faz
+O BackupSave cria backups compactados em ZIP, permite criar pontos de restauração permanentes e adiciona um gerenciador direto no menu principal do jogo.
 
-- **Backup Automático**: Cria automaticamente ao carregar o jogo
-- **Restauração Automática**: Detecta morte e restaura o último backup
-- **Pontos Permanentes**: Crie backups que nunca serão deletados
-- **Gerenciamento**: Configure limite de backups (0-100, padrão 50)
-- **Multi-jogo**: Funciona em MSC e MWC
-- **Importação**: Importe saves entre os dois jogos
+## Recursos
 
-## Instalação
+- **Backup automático**: cria um backup ao carregar o save.
+- **Restauração automática após morte**: detecta quando o save é apagado e restaura o backup mais recente.
+- **Modos de restauração**: desligado, restaurar tudo ou restaurar mantendo as lápides.
+- **Pontos de restauração**: backups permanentes que não entram no limite automático.
+- **Backups em ZIP**: reduz arquivos soltos e mantém compatibilidade com backups antigos em pasta.
+- **Limite de backups**: remove backups automáticos antigos quando passa do limite configurado.
+- **Prefixo de personagem**: adiciona o primeiro nome do personagem ao backup.
+- **Gerenciador no menu principal**: restaurar, deletar, criar ponto, abrir pastas e importar backups sem usar o menu do MSCLoader.
+- **Ferramenta meshsave**: deleta `meshsave.txt` manualmente ou automaticamente no menu.
+- **Importação SaveBackuper**: importa backups antigos da pasta `AppData\LocalLow\Amistech\Backup`.
+- **Importação MSC para MWC**: copia o save de My Summer Car para My Winter Car criando backup de segurança quando possível.
+- **Localização automática**: usa inglês por padrão e muda para português quando detecta o mod de tradução BR instalado.
 
-1. Baixe `BackupSave.dll` das releases
-2. Copie para `Mods/` do jogo
-3. Pronto!
+## Interface
+
+No menu principal do jogo aparece o botão **BACKUPS**. Ele abre o gerenciador com:
+
+- lista de backups e pontos de restauração;
+- campo opcional para nomear ponto de restauração;
+- botões para restaurar, deletar e criar ponto;
+- botões para reiniciar o menu, abrir a pasta do save e abrir a pasta de backups;
+- configurações de restauração automática, limite de backups e prefixo do personagem;
+- opções de meshsave e importação quando disponíveis.
 
 ## Localização
 
-O mod usa inglês por padrão e muda automaticamente para pt-BR quando encontra o
-mod de localização correspondente ao jogo carregado:
+O mod não usa `language.json`.
 
-- My Summer Car: `MSC_Localization_Core_BR`
-- My Winter Car: `MWC_Localization_Core_BR`
+O idioma é detectado automaticamente pela presença do mod de tradução correspondente:
 
-A localização cobre textos de configuração, pop-ups e logs do mod.
+- **My Summer Car**: `MSC_Localization_Core_BR`
+- **My Winter Car**: `MWC_Localization_Core_BR`
 
-## Configuração
+Sem esses mods, o BackupSave usa inglês.
 
-No menu MSCLoader do jogo:
+## Pastas
 
-- **Modo de Restauração**: Desligado | Restaurar Tudo | Manter Lápides
-- **Limite de Backups**: 0-100 (0 = ilimitado)
-- **Prefixo do Personagem**: Adiciona nome ao backup
-- **Gerenciar Backups**: Dropdown para restaurar/deletar
-- **Criar Ponto**: Backup permanente
-- **Deletar Meshsave**: Reseta forma do veículo
+Backups do BackupSave:
 
-## Arquivos
+```text
+C:\Users\{usuario}\AppData\LocalLow\Amistech\BackupSave
+```
 
-Salvos em: `C:\Users\{user}\AppData\LocalLow\Amistech\BackupSave\`
+Save original do My Summer Car:
 
----
+```text
+C:\Users\{usuario}\AppData\LocalLow\Amistech\My Summer Car
+```
 
-**Versão**: 1.0.1 | **Baseado em**: SaveBackuper por AnimeForevere
+Save original do My Winter Car:
+
+```text
+C:\Users\{usuario}\AppData\LocalLow\Amistech\My Winter Car
+```
+
+Backups antigos do SaveBackuper:
+
+```text
+C:\Users\{usuario}\AppData\LocalLow\Amistech\Backup
+```
+
+## Instalação
+
+1. Copie `BackupSave.dll` para a pasta `Mods` do jogo.
+2. Abra o jogo e use o botão **BACKUPS** no menu principal.
+
+Uma cópia compilada fica em:
+
+```text
+MOD\BackupSave.dll
+```
+
+## Build
+
+O projeto usa .NET Framework 3.5 e referências do jogo/MSCLoader.
+
+O pós-build copia a DLL para as pastas de mods de My Summer Car e My Winter Car quando elas existem.
+
+## Versão
+
+**2.0.0**
+
+Baseado originalmente no SaveBackuper por AnimeForevere.

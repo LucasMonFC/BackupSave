@@ -31,11 +31,6 @@ namespace BackupSave
             };
         }
 
-        public string GetRestorePointFolderName()
-        {
-            return Text("Restoration Point", "Ponto de Restauração");
-        }
-
         public string GetImportedPrefix()
         {
             return Text("IMPORTED - ", "IMPORTADO - ");

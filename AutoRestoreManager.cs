@@ -1,4 +1,4 @@
-using MSCLoader;
+﻿using MSCLoader;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -73,30 +73,13 @@ namespace BackupSave
                     string savePath = Path.Combine(mscSavesPath, gameFolder);
                     lastSaveFilesExisted = CheckSaveFilesExist(gameFolder, savePath);
                     backupWasCreated = true;
+                    LogStartupStatus(gameFolder);
                 }
                 else
                 {
                     backupWasCreated = false;
                 }
 
-                // Mostrar status da Restauração Automática quando save é carregado
-                string disabledLog = LocalizationManager.Text("[BackupSave] Automatic Restoration: Disabled", "[BackupSave] Restauração Automática: Desligada");
-                string restoreAllLog = LocalizationManager.Text("[BackupSave] Automatic Restoration: Restore All", "[BackupSave] Restauração Automática: Restaurar Tudo");
-                string restoreGraveyardLog = LocalizationManager.Text("[BackupSave] Automatic Restoration: Restore keeping gravestones", "[BackupSave] Restauração Automática: Restaurar mantendo as lápides");
-                if (localizationManager != null)
-                {
-                    disabledLog = localizationManager.GetString("log", "autoRestoreModeDisabled", disabledLog);
-                    restoreAllLog = localizationManager.GetString("log", "autoRestoreModeRestoreAll", restoreAllLog);
-                    restoreGraveyardLog = localizationManager.GetString("log", "autoRestoreModeRestoreGraveyard", restoreGraveyardLog);
-                }
-                string[] modeLogMessages = new string[] 
-                {
-                    disabledLog,
-                    restoreAllLog,
-                    restoreGraveyardLog
-                };
-                string logColor = autoRestoreMode == 0 ? "#ff0000" : "#00ff00"; // Vermelho se desligada, verde se ligada
-                ModConsole.Log("<color=" + logColor + ">" + modeLogMessages[autoRestoreMode] + "</color>");
             }
             catch (Exception ex)
             {
@@ -105,6 +88,30 @@ namespace BackupSave
                     "[BackupSave] Erro ao fazer backup do save\n") + ex.Message);
                 backupWasCreated = false;
             }
+        }
+
+        private void LogStartupStatus(string gameFolder)
+        {
+            string backupName = backupManager.GetLatestBackupName(gameFolder);
+            string backupMsg = LocalizationManager.Text(
+                "[BackupSave] Automatic backup created: ",
+                "[BackupSave] Backup automático criado: ");
+            string modeMsg = LocalizationManager.Text(
+                "[BackupSave] Restore after death mode: ",
+                "[BackupSave] Modo de restauração após morte: ");
+
+            string[] modes = localizationManager != null
+                ? localizationManager.GetAutoRestoreModeValues()
+                : new string[]
+                {
+                    LocalizationManager.Text("Disabled", "Desligada"),
+                    LocalizationManager.Text("Restore All", "Restaurar Tudo"),
+                    LocalizationManager.Text("Restore keeping gravestones", "Restaurar mantendo as lápides")
+                };
+
+            string modeName = modes[Math.Max(0, Math.Min(autoRestoreMode, modes.Length - 1))];
+            ModConsole.Log("<color=#00ff00>" + backupMsg + backupName + "</color>");
+            ModConsole.Log("<color=#00ff00>" + modeMsg + modeName + "</color>");
         }
 
         /// <summary>
