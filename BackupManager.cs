@@ -571,7 +571,7 @@ namespace BackupSave
                         ? localizationManager.GetString("log", "errorCreatingRestorePoint", errorMsg)
                         : localizationManager.GetString("log", "errorCreatingBackup", errorMsg);
                 }
-                ModConsole.Error(errorMsg + "\n" + ex.Message);
+                ModConsole.Error(LogFormatter.WithPrefixEachLine(errorMsg + "\n" + ex.Message));
                 return false;
             }
         }
@@ -665,7 +665,7 @@ namespace BackupSave
                 {
                     errorMsg = localizationManager.GetString("log", "errorDeletingItem", errorMsg);
                 }
-                ModConsole.Error(errorMsg + typeEn + "\n" + ex.Message);
+                ModConsole.Error(LogFormatter.WithPrefixEachLine(errorMsg + typeEn + "\n" + ex.Message));
                 return false;
             }
         }
@@ -692,9 +692,9 @@ namespace BackupSave
             }
             catch (Exception ex)
             {
-                ModConsole.Error(LocalizationManager.Text(
+                ModConsole.Error(LogFormatter.WithPrefixEachLine(LocalizationManager.Text(
                     LOG_PREFIX + "Error deleting meshsave.txt\n",
-                    LOG_PREFIX + "Erro ao deletar meshsave.txt\n") + ex.Message);
+                    LOG_PREFIX + "Erro ao deletar meshsave.txt\n") + ex.Message));
                 return false;
             }
         }
@@ -871,15 +871,18 @@ namespace BackupSave
         }
 
         public bool ImportExternalBackupPath(string externalBackupPath, string importedName, int backupLimit, bool manageLimit = true)
+            => ImportExternalBackupPath("My Summer Car", externalBackupPath, importedName, backupLimit, manageLimit, false);
+
+        public bool ImportExternalBackupPath(string gameFolder, string externalBackupPath, string importedName, int backupLimit, bool manageLimit = true, bool asRestorePoint = false)
         {
             try
             {
-                string backupPath = GetBackupPath("My Summer Car", importedName);
-                string zipPath = GetZipPath(backupPath);
+                string itemPath = asRestorePoint ? GetRestorePointPath(gameFolder, importedName) : GetBackupPath(gameFolder, importedName);
+                string zipPath = GetZipPath(itemPath);
 
                 if (Directory.Exists(externalBackupPath))
                 {
-                    CreateZipFromSaveFiles(externalBackupPath, zipPath);
+                    CreateZipFromSaveFiles(externalBackupPath, zipPath, gameFolder);
                 }
                 else if (File.Exists(externalBackupPath) && Path.GetExtension(externalBackupPath).Equals(ZIP_EXTENSION, StringComparison.OrdinalIgnoreCase))
                 {
@@ -895,11 +898,33 @@ namespace BackupSave
                     return false;
                 }
 
-                if (manageLimit)
-                    ManageBackupLimit("My Summer Car", backupLimit);
+                if (manageLimit && !asRestorePoint)
+                    ManageBackupLimit(gameFolder, backupLimit);
                 return true;
             }
-            catch (Exception ex) { ModConsole.Error(LocalizationManager.Text(LOG_PREFIX + "Error importing external backup\n", LOG_PREFIX + "Erro ao importar backup externo\n") + ex.Message); return false; }
+            catch (Exception ex) { ModConsole.Error(LogFormatter.WithPrefixEachLine(LocalizationManager.Text(LOG_PREFIX + "Error importing external backup\n", LOG_PREFIX + "Erro ao importar backup externo\n") + ex.Message)); return false; }
+        }
+    }
+
+    internal static class LogFormatter
+    {
+        private const string Prefix = "[BackupSave] ";
+
+        public static string WithPrefixEachLine(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return Prefix.TrimEnd();
+
+            string[] lines = message.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (string.IsNullOrEmpty(lines[i]) || lines[i].Trim().Length == 0 || lines[i].TrimStart().StartsWith("[BackupSave]", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                lines[i] = Prefix + lines[i];
+            }
+
+            return string.Join("\n", lines);
         }
     }
 }

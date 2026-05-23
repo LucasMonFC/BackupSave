@@ -83,9 +83,9 @@ namespace BackupSave
             }
             catch (Exception ex)
             {
-                ModConsole.Error(LocalizationManager.Text(
+                ModConsole.Error(LogFormatter.WithPrefixEachLine(LocalizationManager.Text(
                     "[BackupSave] Error backing up the save\n",
-                    "[BackupSave] Erro ao fazer backup do save\n") + ex.Message);
+                    "[BackupSave] Erro ao fazer backup do save\n") + ex.Message));
                 backupWasCreated = false;
             }
         }

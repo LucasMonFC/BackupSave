@@ -16,7 +16,7 @@ namespace BackupSave
         public override string ID => "BackupSave";
         public override string Name => "BackupSave";
         public override string Author => "LucasMonOficial";
-        public override string Version => "2.0.1";
+        public override string Version => "2.0.2";
         public override string Description => LocalizationManager.Text(
             "Advanced automatic backup system with easy restore and backup limit control.",
             "Sistema avançado de backup automático com restauração fácil, controle de limite de backups.");
@@ -388,7 +388,7 @@ namespace BackupSave
 
         private bool CanShowExternalBackupImport()
         {
-            return ModLoader.CurrentGame == Game.MySummerCar && saveImportManager != null && saveImportManager.HasExternalBackups();
+            return saveImportManager != null && saveImportManager.HasExternalBackups();
         }
 
         private void OnOpenBackupFolderClick()
@@ -850,10 +850,12 @@ namespace BackupSave
             private float GetPanelHeight()
             {
                 float desiredHeight = 630f;
-                if (showImportSave || showExternalImport)
-                    desiredHeight += 80f;
+                if (showImportSave)
+                    desiredHeight += 56f;
+                if (showExternalImport)
+                    desiredHeight += 56f;
 
-                return Mathf.Clamp(desiredHeight, 560f, Screen.height - 8f);
+                return Mathf.Clamp(desiredHeight, 600f, Screen.height - 8f);
             }
 
             private void DrawGameTitle(Rect panelRect)
@@ -1012,9 +1014,9 @@ namespace BackupSave
 
                 if (showExternalImport)
                 {
-                    GUILayout.Label(owner.localizationManager.GetString("text", "importExternalPath", LocalizationManager.Text("Import all backups from the external Backup folder.", "Importar todos os backups da pasta Backup externa.")), noteStyle);
+                    GUILayout.Label(owner.localizationManager.GetString("text", "importExternalPath", LocalizationManager.Text("Import external backups as restore points.", "Importar backups externos como pontos de restauração.")), noteStyle);
                     Rect importAllRect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
-                    if (DrawOutlinedButton(importAllRect, owner.localizationManager.GetString("button", "importAllBackups", LocalizationManager.Text("IMPORT ALL BACKUPS", "IMPORTAR TODOS OS BACKUPS")), buttonStyle, themeColor))
+                    if (DrawOutlinedButton(importAllRect, owner.localizationManager.GetString("button", "importAllBackups", LocalizationManager.Text("IMPORT RESTORE POINTS", "IMPORTAR PONTOS DE RESTAURAÇÃO")), buttonStyle, themeColor))
                     {
                         owner.OnImportAllExternalBackupsClick();
                         RefreshData();
@@ -1091,10 +1093,9 @@ namespace BackupSave
                 text += owner.localizationManager.GetString("text", "infoMeshsave", LocalizationManager.Text(
                     "- Meshsave tool: deletes meshsave.txt so the game can rebuild the vehicle format when needed.",
                     "- Ferramenta meshsave: deleta meshsave.txt para o jogo recriar o formato do veículo quando precisar.")) + "\n";
-                if (ModLoader.CurrentGame == Game.MySummerCar)
-                    text += owner.localizationManager.GetString("text", "infoImportSaveBackuper", LocalizationManager.Text(
-                        "- SaveBackuper import: imports old backups from AppData/LocalLow/Amistech/Backup into the new ZIP system.",
-                        "- Importação SaveBackuper: importa backups antigos de AppData/LocalLow/Amistech/Backup para o novo sistema ZIP.")) + "\n";
+                text += owner.localizationManager.GetString("text", "infoImportSaveBackuper", LocalizationManager.Text(
+                    "- External import: imports backups from SaveBackuper, MSC AutoBackup and MSC/MWC Save Backup Manager as restore points.",
+                    "- Importação externa: importa backups do SaveBackuper, MSC AutoBackup e MSC/MWC Save Backup Manager como pontos de restauração.")) + "\n";
                 if (ModLoader.CurrentGame == Game.MyWinterCar)
                     text += owner.localizationManager.GetString("text", "infoImportSaveMWC", LocalizationManager.Text(
                         "- MSC to MWC import: copies the My Summer Car save to My Winter Car and creates a safety backup first when possible.",
@@ -1419,8 +1420,33 @@ namespace BackupSave
 
                 private void OnMouseDown()
                 {
-                    if (callback != null)
+                    if (callback != null && !IsMSCLoaderMenuOpen())
                         callback();
+                }
+
+                private bool IsMSCLoaderMenuOpen()
+                {
+                    try
+                    {
+                        MonoBehaviour[] behaviours = UnityEngine.Resources.FindObjectsOfTypeAll<MonoBehaviour>();
+                        for (int i = 0; i < behaviours.Length; i++)
+                        {
+                            MonoBehaviour behaviour = behaviours[i];
+                            if (behaviour == null)
+                                continue;
+
+                            Type type = behaviour.GetType();
+                            if (type == null || type.FullName != "MSCLoader.ModMenuButton")
+                                continue;
+
+                            FieldInfo openedField = type.GetField("opened", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                            if (openedField != null && openedField.FieldType == typeof(bool) && (bool)openedField.GetValue(behaviour))
+                                return true;
+                        }
+                    }
+                    catch { }
+
+                    return false;
                 }
             }
         }

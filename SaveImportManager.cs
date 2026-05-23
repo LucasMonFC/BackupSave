@@ -10,6 +10,8 @@ namespace BackupSave
         private string mscSavesPath;
         private BackupManager backupManager;
         private LocalizationManager localizationManager;
+        private const string MSC_GAME_FOLDER = "My Summer Car";
+        private const string MWC_GAME_FOLDER = "My Winter Car";
         
         private readonly string[] filesToImport = { "defaultES2File.txt", "graveyard.txt", "items.txt", "notepad.txt", "options.txt", "trophies.txt" };
 
@@ -71,7 +73,7 @@ namespace BackupSave
                     {
                         errorMsg = localizationManager.GetString("message", "importSaveNotFound", errorMsg);
                     }
-                    ModConsole.Error(errorMsg);
+                    ModConsole.Error(LogFormatter.WithPrefixEachLine(errorMsg));
                     return;
                 }
 
@@ -118,7 +120,7 @@ namespace BackupSave
                     }
                 }
                 
-                ModConsole.Log("<color=#00ff00>" + message + "</color>");
+                ModConsole.Log("<color=#00ff00>" + LogFormatter.WithPrefixEachLine(message) + "</color>");
             }
             catch (Exception ex)
             {
@@ -127,7 +129,7 @@ namespace BackupSave
                 {
                     errorPrefix = localizationManager.GetString("message", "errorImport", errorPrefix);
                 }
-                ModConsole.Error(errorPrefix + ex.Message);
+                ModConsole.Error(LogFormatter.WithPrefixEachLine(errorPrefix + ex.Message));
             }
         }
 
@@ -137,8 +139,7 @@ namespace BackupSave
         public bool HasMSCSave() => HasKeyFile(Path.Combine(mscSavesPath, "My Summer Car"));
 
         /// <summary>
-        /// IMPORTAÇÃO DE BACKUPS DO SAVEBACKUPER
-        /// Verifica se existem backups externos do SaveBackuper
+        /// Verifica se existem backups externos importáveis
         /// </summary>
         public bool HasExternalBackups()
         {
@@ -152,45 +153,21 @@ namespace BackupSave
             }
         }
 
-        /// <summary>
-        /// Obtém o caminho raiz dos backups externos do SaveBackuper
-        /// </summary>
-        private string GetExternalBackupRootPath()
+        private string GetCurrentGameFolder()
         {
-            if (!string.IsNullOrEmpty(mscSavesPath))
-                return Path.Combine(mscSavesPath, "Backup");
-
-            return Path.Combine(
-                Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
-                        .Replace("Roaming", "LocalLow"), 
-                    "Amistech"), 
-                "Backup");
+            return ModLoader.CurrentGame == Game.MySummerCar ? MSC_GAME_FOLDER : MWC_GAME_FOLDER;
         }
 
         /// <summary>
-        /// Lista todos os backups externos do SaveBackuper
+        /// Lista todos os backups externos importáveis
         /// </summary>
         private string[] GetExternalBackupPaths()
         {
             try
             {
-                string externalBackupPath = GetExternalBackupRootPath();
-                
-                if (!Directory.Exists(externalBackupPath))
-                    return new string[] { };
-
-                DirectoryInfo root = new DirectoryInfo(externalBackupPath);
                 List<FileSystemInfo> backups = new List<FileSystemInfo>();
-
-                foreach (DirectoryInfo dir in root.GetDirectories())
-                {
-                    if (IsImportableExternalBackupDirectory(dir))
-                        backups.Add(dir);
-                }
-
-                foreach (FileInfo file in root.GetFiles("*.zip"))
-                    backups.Add(file);
+                foreach (string externalBackupPath in GetExternalBackupRootPaths())
+                    AddExternalBackupsFromRoot(externalBackupPath, backups, IsDirectoryBackupRoot(externalBackupPath));
 
                 if (backups.Count == 0)
                     return new string[] { };
@@ -207,6 +184,111 @@ namespace BackupSave
             {
                 return new string[] { };
             }
+        }
+
+        private string[] GetExternalBackupRootPaths()
+        {
+            List<string> paths = new List<string>();
+
+            string currentGameFolder = GetCurrentGameFolder();
+            if (!string.IsNullOrEmpty(mscSavesPath))
+            {
+                AddUniquePath(paths, Path.Combine(Path.Combine(mscSavesPath, currentGameFolder), "backups"));
+                if (currentGameFolder == MSC_GAME_FOLDER)
+                    AddUniquePath(paths, Path.Combine(mscSavesPath, "Backup"));
+
+                string gameCode = GetCurrentGameCode();
+                AddUniquePath(paths, Path.Combine(Path.Combine(mscSavesPath, "Backup"), gameCode + "_Backup"));
+                AddUniquePath(paths, Path.Combine(Path.Combine(mscSavesPath, "RestorePoints"), gameCode + "_RestorePoints"));
+            }
+
+            return paths.ToArray();
+        }
+
+        private string GetCurrentGameCode()
+        {
+            return GetCurrentGameFolder() == MSC_GAME_FOLDER ? "MSC" : "MWC";
+        }
+
+        private void AddUniquePath(List<string> paths, string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            for (int i = 0; i < paths.Count; i++)
+            {
+                if (string.Equals(paths[i], path, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
+            paths.Add(path);
+        }
+
+        private bool IsLegacySaveBackuperRoot(string externalBackupPath)
+        {
+            if (string.IsNullOrEmpty(mscSavesPath) || string.IsNullOrEmpty(externalBackupPath))
+                return false;
+
+            string legacyRoot = Path.Combine(mscSavesPath, "Backup");
+            return string.Equals(
+                Path.GetFullPath(externalBackupPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(legacyRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsDirectoryBackupRoot(string externalBackupPath)
+        {
+            return IsLegacySaveBackuperRoot(externalBackupPath) || IsSeasonalAutoBackupRoot(externalBackupPath);
+        }
+
+        private bool IsSeasonalAutoBackupRoot(string externalBackupPath)
+        {
+            if (string.IsNullOrEmpty(mscSavesPath) || string.IsNullOrEmpty(externalBackupPath))
+                return false;
+
+            string gameCode = GetCurrentGameCode();
+            string backupRoot = Path.Combine(Path.Combine(mscSavesPath, "Backup"), gameCode + "_Backup");
+            string restoreRoot = Path.Combine(Path.Combine(mscSavesPath, "RestorePoints"), gameCode + "_RestorePoints");
+            string normalizedPath = NormalizePath(externalBackupPath);
+            return string.Equals(normalizedPath, NormalizePath(backupRoot), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedPath, NormalizePath(restoreRoot), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string NormalizePath(string path)
+        {
+            return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+
+        private void AddExternalBackupsFromRoot(string externalBackupPath, List<FileSystemInfo> backups, bool includeDirectories)
+        {
+            if (!Directory.Exists(externalBackupPath))
+                return;
+
+            DirectoryInfo root = new DirectoryInfo(externalBackupPath);
+            if (includeDirectories)
+            {
+                foreach (DirectoryInfo dir in root.GetDirectories())
+                {
+                    if (IsExternalBackupContainerDirectory(dir.Name))
+                        continue;
+                    if (IsImportableExternalBackupDirectory(dir))
+                        backups.Add(dir);
+                }
+            }
+
+            foreach (FileInfo file in root.GetFiles("*.zip"))
+                backups.Add(file);
+        }
+
+        private bool IsExternalBackupContainerDirectory(string directoryName)
+        {
+            if (string.IsNullOrEmpty(directoryName))
+                return false;
+
+            return directoryName.Equals("MSC_Backup", StringComparison.OrdinalIgnoreCase)
+                || directoryName.Equals("MWC_Backup", StringComparison.OrdinalIgnoreCase)
+                || directoryName.Equals("MSC_RestorePoints", StringComparison.OrdinalIgnoreCase)
+                || directoryName.Equals("MWC_RestorePoints", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool IsImportableExternalBackupDirectory(DirectoryInfo dir)
@@ -233,26 +315,20 @@ namespace BackupSave
         }
 
         /// <summary>
-        /// Importa todos os backups externos do SaveBackuper para o BackupSave
+        /// Importa todos os backups externos para pontos de restauração do BackupSave
         /// </summary>
         public int ImportAllExternalBackups(int backupLimit)
         {
             if (backupManager == null)
                 return 0;
 
-            string externalBackupRootPath = GetExternalBackupRootPath();
-            
-            if (!Directory.Exists(externalBackupRootPath))
-            {
-                return 0;
-            }
-            
             string[] backups = GetExternalBackupPaths();
             if (backups.Length == 0)
             {
                 return 0;
             }
             
+            string gameFolder = GetCurrentGameFolder();
             int importedCount = 0;
             bool allImported = true;
             foreach (string externalBackupPath in backups)
@@ -265,7 +341,7 @@ namespace BackupSave
                 }
                 string importedName = importedPrefix + backupName;
                 
-                if (backupManager.ImportExternalBackupPath(externalBackupPath, importedName, backupLimit, false))
+                if (backupManager.ImportExternalBackupPath(gameFolder, externalBackupPath, importedName, backupLimit, false, true))
                 {
                     importedCount++;
                 }
@@ -277,26 +353,23 @@ namespace BackupSave
                     {
                         errorMsg = localizationManager.GetString("log", "errorCreatingBackup", errorMsg);
                     }
-                    ModConsole.Error(errorMsg + ": " + importedName);
+                    ModConsole.Error(LogFormatter.WithPrefixEachLine(errorMsg + ": " + importedName));
                 }
             }
-            
-            // Aplicar limite de backups após importar todos
-            backupManager.ManageBackupLimit("My Summer Car", backupLimit);
-            
-            // Deletar pasta Backup externa após importação bem-sucedida
+
+            // Deletar pastas externas após importação bem-sucedida
             if (importedCount > 0 && allImported)
             {
-                Directory.Delete(externalBackupRootPath, true);
+                DeleteExternalBackupRoots();
                 // Log informando importação concluída
                 string completedStart = LocalizationManager.Text("[BackupSave] Total of ", "[BackupSave] Total de ");
-                string completedEnd = LocalizationManager.Text(" backup(s) imported successfully.\nBackup folder deleted.\nThe backup list has been updated.", " backup(s) importado(s) com sucesso.\nPasta de backup excluída.\nA lista de backups foi atualizada.");
+                string completedEnd = LocalizationManager.Text(" backup(s) imported as restore points successfully.\nExternal backup folder deleted.\nThe backup list has been updated.", " backup(s) importado(s) como ponto(s) de restauração com sucesso.\nPasta de backup externa excluída.\nA lista de backups foi atualizada.");
                 if (localizationManager != null)
                 {
                     completedStart = localizationManager.GetString("message", "importCompleted", completedStart);
                     completedEnd = localizationManager.GetString("message", "importCompletedEnd", completedEnd);
                 }
-                string completedMsg = completedStart + importedCount + completedEnd;
+                string completedMsg = LogFormatter.WithPrefixEachLine(completedStart + importedCount + completedEnd);
                 ModConsole.Log("<color=#00ff00>" + completedMsg + "</color>");
             }
             else if (importedCount > 0)
@@ -306,7 +379,7 @@ namespace BackupSave
                 {
                     partialMsg = localizationManager.GetString("message", "importPartial", partialMsg);
                 }
-                ModConsole.Log("<color=#ffaa00>" + partialMsg + "</color>");
+                ModConsole.Log("<color=#ffaa00>" + LogFormatter.WithPrefixEachLine(partialMsg) + "</color>");
             }
             else if (!allImported)
             {
@@ -315,10 +388,40 @@ namespace BackupSave
                 {
                     failMsg = localizationManager.GetString("message", "importFailed", failMsg);
                 }
-                ModConsole.Error(failMsg);
+                ModConsole.Error(LogFormatter.WithPrefixEachLine(failMsg));
             }
             
             return importedCount;
+        }
+
+        private void DeleteExternalBackupRoots()
+        {
+            foreach (string externalBackupRootPath in GetExternalBackupRootPaths())
+            {
+                try
+                {
+                    if (Directory.Exists(externalBackupRootPath))
+                        Directory.Delete(externalBackupRootPath, true);
+                }
+                catch { }
+            }
+
+            DeleteEmptyExternalParentFolder("Backup");
+            DeleteEmptyExternalParentFolder("RestorePoints");
+        }
+
+        private void DeleteEmptyExternalParentFolder(string folderName)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(mscSavesPath))
+                    return;
+
+                string path = Path.Combine(mscSavesPath, folderName);
+                if (Directory.Exists(path) && Directory.GetFileSystemEntries(path).Length == 0)
+                    Directory.Delete(path, false);
+            }
+            catch { }
         }
     }
 }

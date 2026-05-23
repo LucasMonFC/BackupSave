@@ -15,12 +15,13 @@ O BackupSave cria backups compactados em ZIP, permite criar pontos de restauraç
 - **Prefixo de personagem**: adiciona o primeiro nome do personagem ao backup.
 - **Gerenciador no menu principal**: restaurar, deletar, criar ponto, abrir pastas e importar backups sem usar o menu do MSCLoader.
 - **Ferramenta meshsave**: deleta `meshsave.txt` manualmente ou automaticamente no menu.
-- **Importação SaveBackuper**: importa backups antigos da pasta `AppData\LocalLow\Amistech\Backup`.
+- **Importação de backups externos**: importa backups do SaveBackuper, MSC AutoBackup e MSC/MWC Save Backup Manager como pontos de restauração.
 - **Importação MSC para MWC**: copia o save de My Summer Car para My Winter Car criando backup de segurança quando possível.
 - **Backup de config do SatsumaTurboCharger**: no My Summer Car, quando o mod `SatsumaTurboCharger` está instalado, salva e restaura junto a pasta `Mods\Config\Mod Settings\SatsumaTurboCharger`.
 - **Backup de config do MwcTurbocharger**: no My Winter Car, quando o mod `MwcTurbocharger` está instalado, salva e restaura junto a pasta `Mods\Config\Mod Settings\MwcTurbocharger`.
 - **Suporte aos caminhos do MSCLoader**: as configs extras são procuradas na pasta `Mods` do jogo, em `Documentos\MySummerCar/MyWinterCar\Mods` e em `AppData\LocalLow\Amistech\My Summer Car/My Winter Car\Mods`.
 - **Localização automática**: usa inglês por padrão e muda para português quando detecta o mod de tradução BR instalado.
+- **Proteção do botão BACKUPS**: evita abrir o gerenciador quando o menu do MSCLoader está aberto por cima.
 
 ## Interface
 
@@ -70,6 +71,22 @@ Backups antigos do SaveBackuper:
 C:\Users\{usuario}\AppData\LocalLow\Amistech\Backup
 ```
 
+Backups do MSC/MWC Save Backup Manager:
+
+```text
+C:\Users\{usuario}\AppData\LocalLow\Amistech\My Summer Car\backups
+C:\Users\{usuario}\AppData\LocalLow\Amistech\My Winter Car\backups
+```
+
+Backups e pontos do MSC AutoBackup:
+
+```text
+C:\Users\{usuario}\AppData\LocalLow\Amistech\Backup\MSC_Backup
+C:\Users\{usuario}\AppData\LocalLow\Amistech\Backup\MWC_Backup
+C:\Users\{usuario}\AppData\LocalLow\Amistech\RestorePoints\MSC_RestorePoints
+C:\Users\{usuario}\AppData\LocalLow\Amistech\RestorePoints\MWC_RestorePoints
+```
+
 ## Instalação
 
 1. Copie `BackupSave.dll` para a pasta `Mods` do jogo.
@@ -89,6 +106,6 @@ O pós-build copia a DLL para as pastas de mods de My Summer Car e My Winter Car
 
 ## Versão
 
-**2.0.1**
+**2.0.2**
 
 Baseado originalmente no SaveBackuper por AnimeForevere.
