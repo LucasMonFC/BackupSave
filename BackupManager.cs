@@ -11,6 +11,11 @@ namespace BackupSave
         private const string GRAVEYARD_FILE = "graveyard.txt";
         private const string ZIP_EXTENSION = ".zip";
         private const string LOG_PREFIX = "[BackupSave] ";
+        private const string MSC_GAME_FOLDER = "My Summer Car";
+        private const string MWC_GAME_FOLDER = "My Winter Car";
+        private const string MSC_SATSUMA_TURBOCHARGER_MOD_ID = "SatsumaTurboCharger";
+        private const string MWC_TURBOCHARGER_MOD_ID = "MwcTurbocharger";
+        private const string MOD_SETTINGS_BACKUP_ROOT = "_BackupSaveModSettings";
         private string mscSavesPath;
         private LocalizationManager localizationManager;
 
@@ -92,6 +97,8 @@ namespace BackupSave
                     if (skipGraveyard && fileName.ToLower() == GRAVEYARD_FILE)
                         continue;
                     string relativePath = GetRelativePath(sourceDir, file);
+                    if (IsInternalBackupPath(relativePath))
+                        continue;
                     string destFile = Path.Combine(destDir, relativePath);
                     string destParent = Path.GetDirectoryName(destFile);
                     if (!Directory.Exists(destParent))
@@ -146,7 +153,7 @@ namespace BackupSave
             return File.Exists(zipPath) ? zipPath : itemPath;
         }
 
-        private void CreateZipFromSaveFiles(string sourceDir, string zipPath)
+        private void CreateZipFromSaveFiles(string sourceDir, string zipPath, string gameFolder = "")
         {
             string parent = Path.GetDirectoryName(zipPath);
             if (!Directory.Exists(parent))
@@ -162,6 +169,7 @@ namespace BackupSave
                     zip.AddFile(file, Path.GetDirectoryName(GetRelativePath(sourceDir, file)) ?? "");
                 }
 
+                AddSupportedModSettingsToZip(zip, gameFolder);
                 zip.Save(zipPath);
             }
         }
@@ -179,11 +187,12 @@ namespace BackupSave
                     string fileName = Path.GetFileName(entryName);
                     if (string.IsNullOrEmpty(fileName) || entryName.Contains("..") || Path.IsPathRooted(entryName))
                         continue;
+                    if (IsInternalBackupPath(entryName))
+                        continue;
 
                     if (skipGraveyard && fileName.ToLower() == GRAVEYARD_FILE)
                         continue;
 
-                    entry.FileName = entryName;
                     entry.Extract(destDir, ExtractExistingFileAction.OverwriteSilently);
                 }
             }
@@ -198,6 +207,275 @@ namespace BackupSave
             }
 
             ExtractZipToDirectory(itemPath, destDir, skipGraveyard);
+        }
+
+        private bool IsInternalBackupPath(string relativePath)
+        {
+            if (string.IsNullOrEmpty(relativePath))
+                return false;
+
+            string normalized = relativePath.Replace('\\', '/').TrimStart('/');
+            return normalized.Equals(MOD_SETTINGS_BACKUP_ROOT, StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith(MOD_SETTINGS_BACKUP_ROOT + "/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool ShouldBackupModSettings(string gameFolder, string supportedGameFolder, string modId)
+        {
+            string settingsPath = GetModSettingsPath(supportedGameFolder, modId);
+            return string.Equals(gameFolder, supportedGameFolder, StringComparison.OrdinalIgnoreCase)
+                && IsModLoaded(modId)
+                && Directory.Exists(settingsPath);
+        }
+
+        private bool IsModLoaded(string modId)
+        {
+            if (string.IsNullOrEmpty(modId) || ModLoader.LoadedMods == null)
+                return false;
+
+            foreach (Mod mod in ModLoader.LoadedMods)
+            {
+                if (mod != null && string.Equals(mod.ID, modId, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void AddSupportedModSettingsToZip(ZipFile zip, string gameFolder)
+        {
+            AddModSettingsToZip(zip, gameFolder, MSC_GAME_FOLDER, MSC_SATSUMA_TURBOCHARGER_MOD_ID);
+            AddModSettingsToZip(zip, gameFolder, MWC_GAME_FOLDER, MWC_TURBOCHARGER_MOD_ID);
+        }
+
+        private void AddModSettingsToZip(ZipFile zip, string gameFolder, string supportedGameFolder, string modId)
+        {
+            if (!ShouldBackupModSettings(gameFolder, supportedGameFolder, modId))
+                return;
+
+            string settingsPath = GetModSettingsPath(supportedGameFolder, modId);
+            foreach (string file in Directory.GetFiles(settingsPath, "*", SearchOption.AllDirectories))
+            {
+                string relativePath = GetRelativePath(settingsPath, file);
+                string relativeDirectory = Path.GetDirectoryName(relativePath);
+                string archiveDirectory = GetModSettingsBackupFolder(modId);
+                if (!string.IsNullOrEmpty(relativeDirectory))
+                    archiveDirectory += "/" + relativeDirectory.Replace('\\', '/');
+
+                zip.AddFile(file, archiveDirectory);
+            }
+        }
+
+        private void RestoreSupportedModSettings(string gameFolder, string backupPath)
+        {
+            RestoreModSettings(gameFolder, backupPath, MSC_GAME_FOLDER, MSC_SATSUMA_TURBOCHARGER_MOD_ID);
+            RestoreModSettings(gameFolder, backupPath, MWC_GAME_FOLDER, MWC_TURBOCHARGER_MOD_ID);
+        }
+
+        private void RestoreModSettings(string gameFolder, string backupPath, string supportedGameFolder, string modId)
+        {
+            if (!string.Equals(gameFolder, supportedGameFolder, StringComparison.OrdinalIgnoreCase))
+                return;
+            if (!IsModLoaded(modId))
+                return;
+
+            if (Directory.Exists(backupPath))
+            {
+                string sourceDir = Path.Combine(Path.Combine(backupPath, MOD_SETTINGS_BACKUP_ROOT), modId);
+                if (Directory.Exists(sourceDir))
+                    ReplaceDirectoryContents(sourceDir, GetModSettingsPath(supportedGameFolder, modId));
+                return;
+            }
+
+            if (File.Exists(backupPath))
+                RestoreModSettingsFromZip(backupPath, supportedGameFolder, modId);
+        }
+
+        private void RestoreModSettingsFromZip(string zipPath, string gameFolder, string modId)
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "BackupSave_" + modId + "_" + Guid.NewGuid().ToString("N"));
+            bool hasSettings = false;
+
+            try
+            {
+                Directory.CreateDirectory(tempDir);
+                using (ZipFile zip = ZipFile.Read(zipPath))
+                {
+                    foreach (ZipEntry entry in zip)
+                    {
+                        string relativePath;
+                        if (!TryGetModSettingsRelativePath(entry.FileName, modId, out relativePath))
+                            continue;
+                        if (string.IsNullOrEmpty(relativePath) || relativePath.Contains("..") || Path.IsPathRooted(relativePath))
+                            continue;
+
+                        entry.Extract(tempDir, ExtractExistingFileAction.OverwriteSilently);
+                        if (!entry.IsDirectory)
+                            hasSettings = true;
+                    }
+                }
+
+                string extractedSettingsDir = Path.Combine(Path.Combine(tempDir, MOD_SETTINGS_BACKUP_ROOT), modId);
+                if (hasSettings)
+                    ReplaceDirectoryContents(extractedSettingsDir, GetModSettingsPath(gameFolder, modId));
+            }
+            finally
+            {
+                try
+                {
+                    if (Directory.Exists(tempDir))
+                        Directory.Delete(tempDir, true);
+                }
+                catch { }
+            }
+        }
+
+        private bool TryGetModSettingsRelativePath(string archivePath, string modId, out string relativePath)
+        {
+            relativePath = "";
+            if (string.IsNullOrEmpty(archivePath))
+                return false;
+
+            string normalized = archivePath.Replace('\\', '/').TrimStart('/');
+            string prefix = GetModSettingsBackupFolder(modId) + "/";
+            if (!normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            relativePath = normalized.Substring(prefix.Length).Replace('/', Path.DirectorySeparatorChar);
+            return true;
+        }
+
+        private string GetModSettingsBackupFolder(string modId)
+        {
+            return MOD_SETTINGS_BACKUP_ROOT + "/" + modId;
+        }
+
+        private string GetModSettingsPath(string gameFolder, string modId)
+        {
+            string[] candidates = GetModSettingsPathCandidates(gameFolder, modId);
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                if (Directory.Exists(candidates[i]))
+                    return candidates[i];
+            }
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                string parent = Path.GetDirectoryName(candidates[i]);
+                if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
+                    return candidates[i];
+            }
+
+            return candidates.Length > 0 ? candidates[0] : "";
+        }
+
+        private string[] GetModSettingsPathCandidates(string gameFolder, string modId)
+        {
+            List<string> candidates = new List<string>();
+
+            AddModSettingsPathCandidate(candidates, GetCurrentGameRootPath(), modId);
+
+            string documentsRoot = GetDocumentsPath();
+            if (!string.IsNullOrEmpty(documentsRoot))
+                AddModSettingsPathCandidate(candidates, Path.Combine(documentsRoot, GetDocumentsModFolderName(gameFolder)), modId);
+
+            AddModSettingsPathCandidate(candidates, GetSavePath(gameFolder), modId);
+
+            return candidates.ToArray();
+        }
+
+        private string GetDocumentsModFolderName(string gameFolder)
+        {
+            return string.Equals(gameFolder, MSC_GAME_FOLDER, StringComparison.OrdinalIgnoreCase)
+                ? "MySummerCar"
+                : "MyWinterCar";
+        }
+
+        private void AddModSettingsPathCandidate(List<string> candidates, string rootPath, string modId)
+        {
+            if (string.IsNullOrEmpty(rootPath))
+                return;
+
+            string path = BuildModSettingsPath(rootPath, modId);
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (string.Equals(candidates[i], path, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
+            candidates.Add(path);
+        }
+
+        private string BuildModSettingsPath(string rootPath, string modId)
+        {
+            return Path.Combine(
+                Path.Combine(
+                    Path.Combine(
+                        Path.Combine(rootPath, "Mods"),
+                        "Config"),
+                    "Mod Settings"),
+                modId);
+        }
+
+        private string GetDocumentsPath()
+        {
+            try
+            {
+                return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            }
+            catch { }
+
+            return "";
+        }
+
+        private string GetCurrentGameRootPath()
+        {
+            try
+            {
+                string dataPath = UnityEngine.Application.dataPath;
+                if (!string.IsNullOrEmpty(dataPath))
+                {
+                    DirectoryInfo dataDirectory = new DirectoryInfo(dataPath);
+                    if (dataDirectory.Parent != null)
+                        return dataDirectory.Parent.FullName;
+                }
+            }
+            catch { }
+
+            try
+            {
+                return Directory.GetCurrentDirectory();
+            }
+            catch { }
+
+            return "";
+        }
+
+        private void ReplaceDirectoryContents(string sourceDir, string destDir)
+        {
+            if (string.IsNullOrEmpty(destDir) || !Directory.Exists(sourceDir))
+                return;
+
+            if (!Directory.Exists(destDir))
+                Directory.CreateDirectory(destDir);
+            else
+                ClearDirectory(destDir);
+
+            CopyFilesInDirectory(sourceDir, destDir);
+        }
+
+        private void ClearDirectory(string directory)
+        {
+            foreach (string file in Directory.GetFiles(directory))
+            {
+                try { File.Delete(file); }
+                catch { }
+            }
+
+            foreach (string childDirectory in Directory.GetDirectories(directory))
+            {
+                try { Directory.Delete(childDirectory, true); }
+                catch { }
+            }
         }
 
         private void DeleteSaveFiles(string savePath, bool preserveGraveyard = false)
@@ -278,7 +556,7 @@ namespace BackupSave
                 if (Directory.Exists(folderPath))
                     Directory.Delete(folderPath, true);
 
-                CreateZipFromSaveFiles(GetSavePath(gameFolder), GetZipPath(folderPath));
+                CreateZipFromSaveFiles(GetSavePath(gameFolder), GetZipPath(folderPath), gameFolder);
                 if (!isRestorePoint) ManageBackupLimit(gameFolder, backupLimit);
                 return true;
             }
@@ -335,22 +613,23 @@ namespace BackupSave
             List<FileSystemInfo> backups = GetBackupItems(GetBackupPath(gameFolder), true);
             if (backups.Count == 0) return false;
             backups.Sort((a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
-            return RestoreBackup(GetSavePath(gameFolder), backups[0].FullName, preserveGraveyard);
+            return RestoreBackup(gameFolder, GetSavePath(gameFolder), backups[0].FullName, preserveGraveyard);
         }
 
         public bool RestoreBackupByName(string gameFolder, string backupName)
         {
             string backupPath = GetBackupPath(gameFolder, backupName);
             string resolvedPath = ResolveBackupItemPath(backupPath);
-            return BackupItemExists(backupPath) ? RestoreBackup(GetSavePath(gameFolder), resolvedPath, false) : false;
+            return BackupItemExists(backupPath) ? RestoreBackup(gameFolder, GetSavePath(gameFolder), resolvedPath, false) : false;
         }
 
-        private bool RestoreBackup(string savePath, string backupPath, bool preserveGraveyard)
+        private bool RestoreBackup(string gameFolder, string savePath, string backupPath, bool preserveGraveyard)
         {
             try
             {
                 DeleteSaveFiles(savePath, preserveGraveyard);
                 CopyOrExtractBackupItem(backupPath, savePath, preserveGraveyard);
+                RestoreSupportedModSettings(gameFolder, backupPath);
                 return true;
             }
             catch (Exception ex)
@@ -397,7 +676,7 @@ namespace BackupSave
         {
             string rpPath = GetRestorePointPath(gameFolder, restorePointName);
             string resolvedPath = ResolveBackupItemPath(rpPath);
-            return BackupItemExists(rpPath) ? RestoreBackup(GetSavePath(gameFolder), resolvedPath, false) : false;
+            return BackupItemExists(rpPath) ? RestoreBackup(gameFolder, GetSavePath(gameFolder), resolvedPath, false) : false;
         }
 
         public bool DeleteRestorePointByName(string gameFolder, string restorePointName) => DeleteBackupOrRestorePoint(GetRestorePointPath(gameFolder, restorePointName), true);

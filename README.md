@@ -17,6 +17,9 @@ O BackupSave cria backups compactados em ZIP, permite criar pontos de restauraç
 - **Ferramenta meshsave**: deleta `meshsave.txt` manualmente ou automaticamente no menu.
 - **Importação SaveBackuper**: importa backups antigos da pasta `AppData\LocalLow\Amistech\Backup`.
 - **Importação MSC para MWC**: copia o save de My Summer Car para My Winter Car criando backup de segurança quando possível.
+- **Backup de config do SatsumaTurboCharger**: no My Summer Car, quando o mod `SatsumaTurboCharger` está instalado, salva e restaura junto a pasta `Mods\Config\Mod Settings\SatsumaTurboCharger`.
+- **Backup de config do MwcTurbocharger**: no My Winter Car, quando o mod `MwcTurbocharger` está instalado, salva e restaura junto a pasta `Mods\Config\Mod Settings\MwcTurbocharger`.
+- **Suporte aos caminhos do MSCLoader**: as configs extras são procuradas na pasta `Mods` do jogo, em `Documentos\MySummerCar/MyWinterCar\Mods` e em `AppData\LocalLow\Amistech\My Summer Car/My Winter Car\Mods`.
 - **Localização automática**: usa inglês por padrão e muda para português quando detecta o mod de tradução BR instalado.
 
 ## Interface
@@ -86,6 +89,6 @@ O pós-build copia a DLL para as pastas de mods de My Summer Car e My Winter Car
 
 ## Versão
 
-**2.0.0**
+**2.0.1**
 
 Baseado originalmente no SaveBackuper por AnimeForevere.

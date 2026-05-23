@@ -16,7 +16,7 @@ namespace BackupSave
         public override string ID => "BackupSave";
         public override string Name => "BackupSave";
         public override string Author => "LucasMonOficial";
-        public override string Version => "2.0.0";
+        public override string Version => "2.0.1";
         public override string Description => LocalizationManager.Text(
             "Advanced automatic backup system with easy restore and backup limit control.",
             "Sistema avançado de backup automático com restauração fácil, controle de limite de backups.");
@@ -1118,9 +1118,14 @@ namespace BackupSave
             {
                 GUI.DrawTexture(rect, whiteTexture);
                 Rect innerRect = new Rect(rect.x + 2f, rect.y + 2f, rect.width - 4f, rect.height - 4f);
+                bool isPressed = Event.current != null && rect.Contains(Event.current.mousePosition) && Input.GetMouseButton(0);
+                Rect drawRect = isPressed
+                    ? new Rect(innerRect.x, innerRect.y + 2f, innerRect.width, innerRect.height - 2f)
+                    : innerRect;
+
                 Color oldBackground = GUI.backgroundColor;
                 GUI.backgroundColor = fillColor;
-                bool clicked = GUI.Button(innerRect, text, style);
+                bool clicked = GUI.Button(drawRect, text, style);
                 GUI.backgroundColor = oldBackground;
                 return clicked;
             }
